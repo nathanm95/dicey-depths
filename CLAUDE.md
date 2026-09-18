@@ -112,6 +112,13 @@ Agreed up front; don't relitigate without asking.
   Floor 3 is an apple then the boss.
 - **Four equipment cards in a 2x2 grid that never scrolls.** Reading the whole board at once
   *is* the puzzle. Four dice maximum (2 / 3 / 4 on floors 1 / 2 / 3).
+- **A card fires once per turn** (`Card.spent`, cleared in `roll_side()`). This is what makes
+  a fourth die worthless without a fourth card, and it is why filling the grid is the build.
+- **The Reroll card is the one deliberate exception** to once-per-turn, and is always in the
+  Warrior's starting kit. Feeding it a die rerolls THAT die and returns it to the tray
+  unspent, so its cost is one of its own uses rather than the die. Its allowance is refilled
+  every turn to `dice - 1`, which is how "more dice" also means "more second chances". There
+  is no reroll button; the action bar is Limit Break and End Turn only (`ACTION_COUNT`).
 - **Permadeath.** Lose a fight and the run is over.
 - **Campaign: five levels, each a ruleset** (`rules.c`) rather than a difficulty step, each
   with its own boss. Clear one to unlock the next.

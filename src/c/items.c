@@ -68,6 +68,13 @@ static const ItemDef s_items[] = {
     /*38 */ {"Applause",    1, {C_EVEN},       {{EFF_SHIELD, 1, 2, 0}, E_NONE}, 0, 1, 0},
     /*39 */ {"Buzzer",      1, {C_ANY},        {{EFF_INFLICT, 0, 0, ST_SILENCE}, E_NONE}, 0, 1, 0},
     /*40 */ {"Gnaw",        1, {C_ODD},        {{EFF_DRAIN, 1, 1, 0}, E_NONE}, 0, 1, 0},
+
+    // The Warrior's signature move, and the one card exempt from the
+    // once-per-turn rule: its allowance is set each turn from how many dice you
+    // have, so a bigger handful of dice also buys you more chances to fix one.
+    // Feeding it a die rerolls THAT die and gives it straight back, so the cost
+    // is the card's allowance rather than the die itself.
+    /*41 */ {"Reroll",      1, {C_ANY},        {{EFF_REROLL, 0, 0, 0}, E_NONE}, 1, 1, 12},
 };
 
 #define ITEM_TOTAL ((uint8_t)(sizeof(s_items) / sizeof(s_items[0])))
@@ -77,6 +84,7 @@ const ItemDef *item_def(uint8_t id) {
 }
 
 bool item_is_two_slot(uint8_t id) { return item_def(id)->slots > 1; }
+bool item_is_reroll(uint8_t id)   { return id == ITEM_REROLL; }
 
 // --- Loot tables, curated by depth -----------------------------------------
 // Depth 1 holds nothing that a player with two dice cannot solve. Two-slot
@@ -124,6 +132,7 @@ static void effect_tag(const Effect *e, int8_t bonus, char *out, size_t len) {
         case EFF_SHIELD: verb = "shld"; break;
         case EFF_HEAL:   verb = (e->mult == 0 && e->add < 0) ? "self" : "heal"; break;
         case EFF_DRAIN:  verb = "drain";break;
+        case EFF_REROLL:  snprintf(out, len, "reroll"); return;
         case EFF_INFLICT: snprintf(out, len, "%s", status_short((StatusId)e->status)); return;
         case EFF_SELF:    snprintf(out, len, "+%s", status_short((StatusId)e->status)); return;
         default: out[0] = '\0'; return;

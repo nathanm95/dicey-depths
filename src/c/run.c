@@ -133,14 +133,16 @@ void run_new(GameMode mode, uint8_t campaign_level) {
     // The Warrior opens with a sword and a shield: one card that wants a big
     // die and one happy with a small one, so the very first roll already poses
     // the question the whole game is about.
-    g_run.equip[0] = 0;   // Sword
-    g_run.equip[1] = 1;   // Shield
+    g_run.equip[0] = 0;             // Sword
+    g_run.equip[1] = 1;             // Shield
+    g_run.equip[2] = ITEM_REROLL;   // the Warrior always brings this
 
     if (g_run.rule == RULE_GREED) {
         // Curse of Greed opens generous and then bills you for it every turn.
-        g_run.equip[0] = 2;   // Hammer
-        g_run.equip[1] = 8;   // Broadsword
-        g_run.equip[2] = 1;   // Shield
+        g_run.equip[0] = 2;             // Hammer
+        g_run.equip[1] = 8;             // Broadsword
+        g_run.equip[2] = ITEM_REROLL;
+        g_run.equip[3] = 1;             // Shield
         run_set_upgraded(true, 0);
         run_set_upgraded(true, 1);
     }

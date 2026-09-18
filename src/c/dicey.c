@@ -74,10 +74,21 @@ static void over_update(Layer *layer, GContext *ctx) {
     ui_draw_text_c(ctx, line, ui_font_tiny(), sub, COL_INK, GTextAlignmentCenter);
 
     GRect hint = ui_band(&b, (int16_t)(cy + 42), 22, 10);
-    ui_draw_text_c(ctx, "Any button to continue", ui_font_tiny(), hint, COL_FRAME, GTextAlignmentCenter);
+    ui_draw_text_c(ctx, "Tap or press any button", ui_font_tiny(), hint, COL_FRAME, GTextAlignmentCenter);
 }
 
-static void over_dismiss(ClickRecognizerRef r, void *ctx) { window_stack_remove(s_over_win, true); }
+static void over_close(void) { if (s_over_win) window_stack_remove(s_over_win, true); }
+
+static void over_dismiss(ClickRecognizerRef r, void *ctx) { over_close(); }
+
+// The results screen draws into a plain Layer, so the system gesture bridge has
+// nothing to map and gives it no touch at all. Take the raw stream instead, or
+// the only way off this screen is a button.
+static void over_touch(const TouchEvent *e, void *ctx) {
+    if (e->non_navigational) return;          // the contact that woke the watch
+    if (e->type != TouchEvent_Liftoff) return;
+    over_close();
+}
 
 static void over_click_config(void *ctx) {
     window_single_click_subscribe(BUTTON_ID_SELECT, over_dismiss);
@@ -102,6 +113,15 @@ static void over_load(Window *window) {
     s_over_frame = app_timer_register(ANIM_FRAME_MS, over_frame, NULL);
 }
 
+static void over_appear(Window *window) {
+    window_set_touch_bridge_disabled(window, true);
+    if (touch_service_is_enabled()) touch_service_subscribe(over_touch, NULL);
+}
+
+static void over_disappear(Window *window) {
+    touch_service_unsubscribe();
+}
+
 static void over_unload(Window *window) {
     if (s_over_frame) { app_timer_cancel(s_over_frame); s_over_frame = NULL; }
     layer_destroy(s_over_layer);
@@ -118,7 +138,8 @@ void gameover_window_push(bool won) {
     window_set_background_color(s_over_win, COL_BG);
     window_set_click_config_provider(s_over_win, over_click_config);
     window_set_window_handlers(s_over_win, (WindowHandlers) {
-        .load = over_load, .unload = over_unload
+        .load = over_load, .appear = over_appear,
+        .disappear = over_disappear, .unload = over_unload
     });
     window_stack_push(s_over_win, true);
 }
@@ -177,10 +198,15 @@ static const char HOWTO_TEXT[] =
 "Tap the enemy (or hold Select) to see exactly what it is carrying.\n\n"
 "CARDS\n"
 "Each card takes a die that matches its slot: any, odd, even, 4+, 3- or an "
-"exact number. Rare cards take two dice and use the total.\n\n"
+"exact number. Rare cards take two dice and use the total.\n"
+"A card fires ONCE per turn, so four cards and four dice means four actions - "
+"a spare die is worth nothing without a card to put it in.\n\n"
 "THE WARRIOR\n"
-"Reroll any die up to three times each turn. Take damage to charge your Limit "
-"Break: FURY makes your next card fire twice.\n\n"
+"You always carry a Reroll card. Feed it a die and that die is rerolled and "
+"handed straight back to you, unspent. It is the one card that works more than "
+"once a turn: its uses refill each turn, one for every die you carry beyond the "
+"first, so a bigger handful also buys you more second chances.\n"
+"Take damage to charge your Limit Break: FURY makes your next card fire twice.\n\n"
 "STATUSES\n"
 "BRN Burn - a die catches fire, 2 HP to put out\n"
 "FRZ Frozen - your best die becomes a 1\n"

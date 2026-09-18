@@ -54,7 +54,8 @@ void cond_label(Cond c, char *out, size_t len);
 
 // --- Equipment -------------------------------------------------------------
 typedef enum {
-    EFF_NONE = 0, EFF_DAMAGE, EFF_SHIELD, EFF_HEAL, EFF_INFLICT, EFF_SELF, EFF_DRAIN
+    EFF_NONE = 0, EFF_DAMAGE, EFF_SHIELD, EFF_HEAL, EFF_INFLICT, EFF_SELF, EFF_DRAIN,
+    EFF_REROLL      // rerolls the die fed to it and hands it straight back
 } EffectKind;
 
 // value = pips * mult + add. mult 0 gives a flat effect that ignores the die,
@@ -77,13 +78,15 @@ typedef struct {
     uint8_t  price;
 } ItemDef;
 
-#define ITEM_NONE 0xFF
+#define ITEM_NONE   0xFF
+#define ITEM_REROLL   41    // starting kit; its uses scale with your dice
 
 const ItemDef *item_def(uint8_t id);
 void item_effect_label(uint8_t id, char *out, size_t len);
 void item_effect_label_up(uint8_t id, bool upgraded, char *out, size_t len);
 uint8_t item_roll_for_floor(uint8_t depth);
 bool item_is_two_slot(uint8_t id);
+bool item_is_reroll(uint8_t id);
 
 // --- Enemy portraits -------------------------------------------------------
 // Drawn procedurally from flat shapes — bright, bold and cheap, with no art
@@ -163,7 +166,6 @@ extern RunState g_run;
 
 #define WARRIOR_BASE_HP     24
 #define WARRIOR_HP_PER_LVL   4
-#define WARRIOR_REROLLS      3
 
 uint8_t warrior_dice_for_level(uint8_t level);
 uint8_t run_depth(void);            // campaign floor, or endless floor

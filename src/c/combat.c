@@ -30,6 +30,7 @@
 #define TAP_SLOP           8
 #define BURN_EXTINGUISH    2
 #define MAX_FLOAT          6
+#define ACTION_COUNT       2    // Limit Break, End turn — rerolling is a card now
 
 typedef struct {
     uint8_t pips;
@@ -52,6 +53,7 @@ typedef struct {
     uint8_t uses_left;
     bool    disabled;       // Shocked
     bool    weakened;
+    bool    spent;          // already fired this turn
     uint8_t jam;            // Parallel Universe: burning die jams the card
     bool    upgraded;
     Tween   fx;             // fires
@@ -74,7 +76,7 @@ typedef struct {
     GRect cell[MAX_EQUIP];
     GRect slot[MAX_EQUIP][MAX_SLOTS];
     GRect die[MAX_FOE_DICE];
-    GRect action[3];
+    GRect action[2];
 } Layout;
 
 // --- state -----------------------------------------------------------------
@@ -91,13 +93,11 @@ static Card       s_foe_cards[MAX_FOE_EQUIP];
 static Die        s_dice[MAX_DICE];
 static Die        s_foe_dice[MAX_FOE_DICE];
 static uint8_t    s_dice_n, s_foe_dice_n, s_card_n, s_foe_card_n;
-static uint8_t    s_rerolls;
 static Phase      s_phase;
 
 static SelMode    s_mode;
 static int8_t     s_cursor;
 static int8_t     s_pick_die;
-static bool       s_reroll_arm;
 static bool       s_show_kit;
 
 static char       s_toast[64];
@@ -165,6 +165,7 @@ static int card_next_open_slot(const Card *c) {
 static bool card_usable(const Card *c) {
     if (c->id == ITEM_NONE) return false;
     if (c->jam > 0) return false;
+    if (c->spent) return false;     // one firing per card per turn
     const ItemDef *d = item_def(c->id);
     if (d->uses && c->uses_left == 0) return false;
     return true;
@@ -176,6 +177,7 @@ static bool can_place(const Card *c, const Die *die, const char **why) {
     if (die->burning && !parallel()) { if (why) *why = "That die is on fire"; return false; }
     if (c->disabled) { if (why) *why = "Clears the shock"; return true; }
     if (c->jam > 0)  { if (why) *why = "Jammed"; return false; }
+    if (c->spent)    { if (why) *why = "Already fired this turn"; return false; }
     if (!card_usable(c)) { if (why) *why = "All used up"; return false; }
     int slot = card_next_open_slot(c);
     if (slot < 0) { if (why) *why = "No room"; return false; }
@@ -275,6 +277,27 @@ static void fire_card(Card *c, bool by_hero) {
     Die *pool = by_hero ? s_dice : s_foe_dice;
     Combatant *self = by_hero ? &s_hero : &s_foe;
 
+    // The Reroll card is its own thing: it rerolls the die you fed it and
+    // returns it to the tray unspent, so what it costs you is one of its own
+    // limited uses rather than the die. It is also the single exception to the
+    // once-per-turn rule — it stays live until its allowance runs out.
+    if (d->eff[0].kind == EFF_REROLL) {
+        int8_t di = c->filled[0];
+        c->filled[0] = -1;
+        if (di >= 0) {
+            uint8_t before = pool[di].pips;
+            pool[di].pips = (uint8_t)roll_d6();
+            pool[di].used = false;
+            tw_start(&pool[di].settle, 480);
+            tw_stop(&pool[di].fly);
+            if (c->uses_left > 0) c->uses_left--;
+            if (c->uses_left == 0) c->spent = true;
+            tw_start(&c->fx, 420);
+            if (by_hero) toast("Reroll: %d becomes %d  (%d left)", before, pool[di].pips, c->uses_left);
+        }
+        return;
+    }
+
     int16_t value = 0;
     bool had_fire = false;
     for (int i = 0; i < d->slots; i++) {
@@ -293,6 +316,7 @@ static void fire_card(Card *c, bool by_hero) {
 
     if (d->uses && c->uses_left > 0) c->uses_left--;
     c->weakened = false;
+    c->spent = true;
     if (parallel() && had_fire) c->jam = 2;     // the Parallel Universe's Burn
 
     tw_start(&c->fx, 420);
@@ -328,7 +352,14 @@ static void roll_side(bool hero) {
         for (int s = 0; s < MAX_SLOTS; s++) cards[i].filled[s] = -1;
         cards[i].disabled = false;
         cards[i].weakened = false;
+        cards[i].spent = false;
         if (cards[i].jam > 0) cards[i].jam--;
+        // More dice means more chances to fix one: the Reroll card's allowance
+        // is refilled every turn from the size of your handful.
+        if (item_is_reroll(cards[i].id)) {
+            uint8_t allow = (uint8_t)(n > 1 ? n - 1 : 1);
+            cards[i].uses_left = allow;
+        }
     }
     if (hero) tw_start(&s_roll, 700);
 
@@ -377,10 +408,8 @@ static void roll_side(bool hero) {
 
 static void begin_player_turn(void) {
     s_phase = PHASE_PLAYER;
-    s_rerolls = WARRIOR_REROLLS;
     s_mode = SEL_BROWSE;
     s_pick_die = -1;
-    s_reroll_arm = false;
     s_cursor = 0;
     for (int i = 0; i < s_card_n; i++) {
         if (s_cards[i].id != ITEM_NONE) { s_cursor = (int8_t)i; break; }
@@ -562,15 +591,6 @@ static void extinguish(int8_t di) {
     check_end();
 }
 
-static void do_reroll(int8_t di) {
-    if (s_rerolls == 0) { toast("No rerolls left"); return; }
-    if (di < 0 || di >= s_dice_n || s_dice[di].used) { toast("Pick a die you have not spent"); return; }
-    s_dice[di].pips = (uint8_t)roll_d6();
-    tw_start(&s_dice[di].settle, 420);
-    s_rerolls--;
-    toast("Reroll: %d  (%d left)", s_dice[di].pips, s_rerolls);
-}
-
 static void do_limit_break(void) {
     if (!g_run.limit_ready) { toast("Limit Break not charged"); return; }
     if (s_hero.status[ST_SILENCE] > 0) { toast("Silenced - no Limit Break"); return; }
@@ -590,16 +610,8 @@ static void end_turn(void) {
 
 static void do_action(int8_t a) {
     switch (a) {
-        case 0:
-            if (s_rerolls == 0) { toast("No rerolls left"); break; }
-            s_reroll_arm = true;
-            s_mode = SEL_PICK;
-            s_pick_die = -1;
-            for (int i = 0; i < s_dice_n; i++) if (!s_dice[i].used) { s_pick_die = (int8_t)i; break; }
-            toast("Pick a die to reroll");
-            break;
-        case 1: do_limit_break(); break;
-        case 2: end_turn(); break;
+        case 0: do_limit_break(); break;
+        case 1: end_turn(); break;
         default: break;
     }
 }
@@ -661,8 +673,8 @@ static void compute_layout(Layout *L) {
         L->die[i] = GRect((int16_t)(x0 + i * (ds + gap)), (int16_t)(L->dice_band.origin.y + 2), ds, ds);
     }
 
-    int16_t aw = (int16_t)((L->action_band.size.w - 4) / 3);
-    for (int i = 0; i < 3; i++) {
+    int16_t aw = (int16_t)((L->action_band.size.w - 4) / ACTION_COUNT);
+    for (int i = 0; i < ACTION_COUNT; i++) {
         L->action[i] = GRect((int16_t)(L->action_band.origin.x + 2 + i * aw),
                              L->action_band.origin.y, (int16_t)(aw - 2), L->action_band.size.h);
     }
@@ -753,7 +765,7 @@ static void draw_card(GContext *ctx, const Layout *L, int i) {
 
     bool selected = (s_cursor == i);
     GColor fill = COL_CARD;
-    if (c->disabled || c->jam > 0) fill = GColorLightGray;
+    if (c->disabled || c->jam > 0 || c->spent) fill = GColorLightGray;
     if (selected) fill = COL_CARD_SEL;
     if (tw_running(&c->fx) && tw_p(&c->fx) < 250) fill = GColorWhite;
 
@@ -771,23 +783,39 @@ static void draw_card(GContext *ctx, const Layout *L, int i) {
     cond_label(d->cond[0], cond, sizeof(cond));
 
     int16_t slot_w = (int16_t)(d->slots * (L->slot[i][0].size.w + 2) + 4);
+
+    // The upgrade mark and the remaining-uses count live in a badge at the top
+    // right, because a cell this narrow cannot spare the characters on the
+    // effect line — that is what truncated "any reroll x1" to "any rerol...".
+    char badge[10] = "";
+    size_t bl = 0;
+    if (c->upgraded) badge[bl++] = '+';
+    if (d->uses) snprintf(badge + bl, sizeof(badge) - bl, "x%d", c->uses_left);
+    else badge[bl] = '\0';
+    int16_t badge_w = badge[0] ? 22 : 0;
+
     ui_draw_text_c(ctx, d->name, ui_font_tiny(),
                    GRect((int16_t)(r.origin.x + 4), (int16_t)(r.origin.y + 1),
-                         (int16_t)(r.size.w - 8), 16), COL_INK, GTextAlignmentLeft);
+                         (int16_t)(r.size.w - 8 - badge_w), 16), COL_INK, GTextAlignmentLeft);
+    if (badge[0]) {
+        ui_draw_text_c(ctx, badge, ui_font_tiny(),
+                       GRect((int16_t)(r.origin.x + r.size.w - 4 - badge_w),
+                             (int16_t)(r.origin.y + 1), badge_w, 16),
+                       COL_HERO, GTextAlignmentRight);
+    }
+
+    // "any" is the absence of a restriction, so saying it earns nothing and
+    // costs four characters the cell does not have.
+    char pre[12] = "";
+    if (!(d->slots == 1 && d->cond[0].kind == COND_ANY)) snprintf(pre, sizeof(pre), "%s ", cond);
 
     if (c->disabled)      snprintf(line, sizeof(line), "SHOCKED");
+    else if (c->spent)    snprintf(line, sizeof(line), "used");
     else if (c->jam > 0)  snprintf(line, sizeof(line), "JAMMED %d", c->jam);
-    else if (d->uses)     snprintf(line, sizeof(line), "%s %s x%d", cond, eff, c->uses_left);
-    else                  snprintf(line, sizeof(line), "%s %s%s", cond, eff, c->weakened ? " !" : "");
+    else                  snprintf(line, sizeof(line), "%s%s%s", pre, eff, c->weakened ? " !" : "");
     ui_draw_text_c(ctx, line, ui_font_tiny(),
                    GRect((int16_t)(r.origin.x + 4), (int16_t)(r.origin.y + 15),
                          (int16_t)(r.size.w - 8 - slot_w), 16), COL_INK, GTextAlignmentLeft);
-
-    if (c->upgraded) {
-        ui_draw_text_c(ctx, "+", ui_font_small(),
-                       GRect((int16_t)(r.origin.x + r.size.w - 14), (int16_t)(r.origin.y + 1), 12, 16),
-                       COL_HERO, GTextAlignmentRight);
-    }
 
     for (int s = 0; s < d->slots; s++) {
         GRect sr = L->slot[i][s];
@@ -872,18 +900,16 @@ static void draw_hero_strip(GContext *ctx, const Layout *L) {
 }
 
 static void draw_actions(GContext *ctx, const Layout *L) {
-    char reroll[12], fury[12];
-    snprintf(reroll, sizeof(reroll), "RE %d", s_rerolls);
+    char fury[16];
     if (g_run.limit_ready) snprintf(fury, sizeof(fury), "FURY");
-    else snprintf(fury, sizeof(fury), "%d%%",
+    else snprintf(fury, sizeof(fury), "FURY %d%%",
                   (int)(g_run.max_hp ? (g_run.limit_charge * 100 / g_run.max_hp) : 0));
-    const char *labels[3] = { reroll, fury, "END" };
+    const char *labels[ACTION_COUNT] = { fury, "END TURN" };
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < ACTION_COUNT; i++) {
         bool sel = (s_mode == SEL_BROWSE) && (s_cursor == s_card_n + i);
         GColor fill = GColorWhite;
-        if (i == 0 && s_reroll_arm) fill = COL_HERO_DIM;
-        if (i == 1 && g_run.limit_ready) {
+        if (i == 0 && g_run.limit_ready) {
             // A charged Limit Break pulses so you cannot miss it.
             fill = (anim_bob(700, 100, 0) > 0) ? COL_FIRE : COL_GOLD;
         }
@@ -1029,7 +1055,9 @@ static int8_t hit_card(const Layout *L, GPoint p) {
 }
 
 static int8_t hit_action(const Layout *L, GPoint p) {
-    for (int i = 0; i < 3; i++) if (grect_contains_point(&L->action[i], &p)) return (int8_t)i;
+    for (int i = 0; i < ACTION_COUNT; i++) {
+        if (grect_contains_point(&L->action[i], &p)) return (int8_t)i;
+    }
     return -1;
 }
 
@@ -1111,7 +1139,6 @@ static void touch_handler(const TouchEvent *e, void *ctx) {
             // Tapped nothing: put the held die down.
             s_mode = SEL_BROWSE;
             s_pick_die = -1;
-            s_reroll_arm = false;
             s_drag_die = -1;
             break;
         }
@@ -1133,7 +1160,7 @@ static void next_free_die(int dir) {
 // Walk the cursor over cards then the three action buttons, stepping over any
 // empty grid slot — stopping on nothing is just a wasted press.
 static void move_cursor(int dir) {
-    int8_t last = (int8_t)(s_card_n + 2);
+    int8_t last = (int8_t)(s_card_n + ACTION_COUNT - 1);
     int8_t c = s_cursor;
     for (int guard = 0; guard <= last + 1; guard++) {
         c = (int8_t)(c + dir);
@@ -1155,16 +1182,14 @@ static void move_cursor(int dir) {
 static void click_up(ClickRecognizerRef r, void *ctx) {
     if (s_show_kit) { s_show_kit = false; redraw(); return; }
     if (s_phase != PHASE_PLAYER) return;
-    if (s_mode == SEL_PICK && s_reroll_arm) next_free_die(-1);
-    else move_cursor(-1);
+    move_cursor(-1);
     redraw();
 }
 
 static void click_down(ClickRecognizerRef r, void *ctx) {
     if (s_show_kit) { s_show_kit = false; redraw(); return; }
     if (s_phase != PHASE_PLAYER) return;
-    if (s_mode == SEL_PICK && s_reroll_arm) next_free_die(1);
-    else move_cursor(1);
+    move_cursor(1);
     redraw();
 }
 
@@ -1173,10 +1198,7 @@ static void click_select(ClickRecognizerRef r, void *ctx) {
     if (s_phase != PHASE_PLAYER) return;
 
     if (s_mode == SEL_PICK) {
-        if (s_reroll_arm) {
-            do_reroll(s_pick_die);
-            s_reroll_arm = false;
-        } else if (s_pick_die >= 0 && s_dice[s_pick_die].burning && !parallel()) {
+        if (s_pick_die >= 0 && s_dice[s_pick_die].burning && !parallel()) {
             extinguish(s_pick_die);
         } else if (s_cursor < s_card_n) {
             place_die(s_cursor, s_pick_die);
@@ -1206,7 +1228,6 @@ static void click_back(ClickRecognizerRef r, void *ctx) {
     if (s_mode == SEL_PICK) {
         s_mode = SEL_BROWSE;
         s_pick_die = -1;
-        s_reroll_arm = false;
         redraw();
         return;
     }
