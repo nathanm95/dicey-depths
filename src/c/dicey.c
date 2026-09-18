@@ -179,7 +179,7 @@ static const char HOWTO_TEXT[] =
 "Each card takes a die that matches its slot: any, odd, even, 4+, 3- or an "
 "exact number. Rare cards take two dice and use the total.\n\n"
 "THE WARRIOR\n"
-"Reroll any die up to three times a fight. Take damage to charge your Limit "
+"Reroll any die up to three times each turn. Take damage to charge your Limit "
 "Break: FURY makes your next card fire twice.\n\n"
 "STATUSES\n"
 "BRN Burn - a die catches fire, 2 HP to put out\n"

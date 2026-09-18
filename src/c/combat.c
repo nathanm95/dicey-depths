@@ -200,7 +200,7 @@ static void deal_damage(Combatant *t, int16_t amount, bool pierce, bool is_hero)
     if (amount <= 0) {
         float_spawn(is_hero ? GPoint(s_L.hero_strip.origin.x + 20, s_L.hero_strip.origin.y)
                             : GPoint(s_L.portrait.origin.x + s_L.portrait.size.w / 2,
-                                     s_L.portrait.origin.y),
+                                     s_L.portrait.origin.y + s_L.portrait.size.h / 2),
                     0, COL_HERO);
         return;
     }
@@ -220,7 +220,7 @@ static void deal_damage(Combatant *t, int16_t amount, bool pierce, bool is_hero)
         tw_start(&s_foe_hit, 420);
         tw_start(&s_shake, 300);
         float_spawn(GPoint(s_L.portrait.origin.x + s_L.portrait.size.w / 2,
-                           s_L.portrait.origin.y + 6), amount, COL_BAD);
+                           s_L.portrait.origin.y + s_L.portrait.size.h / 2), amount, COL_BAD);
     }
 }
 
@@ -229,7 +229,8 @@ static void heal_up(Combatant *t, int16_t amount, bool is_hero) {
     t->hp += amount;
     if (t->hp > t->max_hp) t->hp = t->max_hp;
     float_spawn(is_hero ? GPoint(s_L.hero_strip.origin.x + 30, s_L.hero_strip.origin.y)
-                        : GPoint(s_L.portrait.origin.x + s_L.portrait.size.w / 2, s_L.portrait.origin.y),
+                        : GPoint(s_L.portrait.origin.x + s_L.portrait.size.w / 2,
+                                 s_L.portrait.origin.y + s_L.portrait.size.h / 2),
                 amount, COL_OK);
 }
 

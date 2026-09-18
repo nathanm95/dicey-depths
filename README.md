@@ -19,7 +19,7 @@ Select, to see exactly what it is carrying; nothing it does should ever be a sur
 Each card takes a die that matches its slot — *any*, *odd*, *even*, *4+*, *3-*, or an exact
 number. Rare cards take two dice and use the total.
 
-**The Warrior** rerolls any die up to three times a fight. Taking damage charges a Limit
+**The Warrior** rerolls any die up to three times each turn. Taking damage charges a Limit
 Break: **Fury** makes your next card fire twice. Levelling up raises your maximum health,
 which also raises the damage you have to soak to earn that Limit Break — getting tougher
 makes your best move rarer.
