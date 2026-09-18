@@ -1,0 +1,24 @@
+{
+  "name": "dicey-dungeons",
+  "author": "Nathan Marchant",
+  "version": "0.1.0",
+  "keywords": ["pebble-app"],
+  "private": true,
+  "dependencies": {},
+  "pebble": {
+    "displayName": "Dicey Depths",
+    "uuid": "7e9e86a3-f47b-446d-9613-16d156ade6b7",
+    "sdkVersion": "3",
+    "enableMultiJS": false,
+    "targetPlatforms": [
+      "emery",
+      "gabbro"
+    ],
+    "watchapp": {
+      "watchface": false
+    },
+    "resources": {
+      "media": []
+    }
+  }
+}
