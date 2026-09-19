@@ -2,7 +2,9 @@
   "name": "dicey-dungeons",
   "author": "Nathan Marchant",
   "version": "0.1.0",
-  "keywords": ["pebble-app"],
+  "keywords": [
+    "pebble-app"
+  ],
   "private": true,
   "dependencies": {},
   "pebble": {
@@ -18,7 +20,28 @@
       "watchface": false
     },
     "resources": {
-      "media": []
+      "media": [
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ENEMY_RAT",
+          "file": "images/enemy_rat.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ENEMY_SLIME",
+          "file": "images/enemy_slime.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ENEMY_KNIGHT",
+          "file": "images/enemy_knight.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ENEMY_DRAKE",
+          "file": "images/enemy_drake.png"
+        }
+      ]
     }
   }
 }

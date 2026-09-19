@@ -128,6 +128,57 @@ Agreed up front; don't relitigate without asking.
 - **All eight statuses ship**, each announcing in plain English what it did the moment it
   lands. On a screen with no room for a tooltip, narration is how the game teaches itself.
 
+## Artwork: generating sprites that the hardware can actually show
+
+Enemy sprites come from PixelLab (MCP). `portraits.c` maps a shape to a resource
+and returns 0 when there is no sprite yet, so the procedural portrait stays as the
+fallback and art can be added one enemy at a time without the roster ever having a hole.
+
+**The palette is the whole game here.** `GColor8` is two bits per channel, so the
+display has exactly 64 colours — each of R/G/B is 0, 85, 170 or 255 — plus 2-bit
+alpha. Art that ignores this still builds: the resource compiler silently
+approximates it, and at 48 pixels across the result is dithered mush. So force the
+palette at generation time rather than fixing it afterwards:
+
+```
+python3 tools/make_palette.py          # writes docs/art/pebble64.png, the 64 legal colours
+# then pass that file base64-encoded as PixelLab's color_image_base64
+```
+
+Settings that have worked, via `create_image_pixflux`:
+
+| Parameter | Value | Why |
+|---|---|---|
+| `width`/`height` | 48 | the portrait box is capped at 52px; 48 fits both displays |
+| `color_image_base64` | `docs/art/pebble64.png` | forces Pebble-legal colours up front |
+| `no_background` | `true` | portraits composite over the enemy band |
+| `shading` | `flat shading` | survives a 64-colour palette; matches the art direction |
+| `outline` | `single color black outline` | the only thing that reads at 48px on a wrist |
+| `detail` | `low detail` | fine detail is invisible and just costs colours |
+
+That produced 6-17 colours per sprite, binary alpha, under 1KB each — four enemies
+cost 1.9KB of the 256KB resource budget, so the full roster is nothing.
+
+**Always run `python3 tools/verify_art.py` before committing a sprite.** It fails on
+off-palette colours, partial alpha and oversized images.
+
+Resources are declared `"type": "bitmap"` in `package.json`, and drawing needs
+`graphics_context_set_compositing_mode(ctx, GCompOpSet)` or the transparency is lost.
+Only the enemy currently on screen is held in memory (`s_foe_bmp`, created in
+`combat_window_push`, destroyed in `window_unload`), so sprite count does not grow the heap.
+
+### Never rotate a bitmap every frame
+
+`graphics_draw_rotated_bitmap` carries an SDK warning about "performance limitations"
+and it means it. Using it for a 48x48 idle sway at 30fps **pegged the emulator at
+100% CPU**; swapping to a plain `graphics_draw_bitmap_in_rect` at a bobbing y brought
+it to 65%, which is *below* the procedural portrait's 68%. Rotation is now spent only
+on the death tumble, where it plays once and a dropped frame costs nothing.
+
+A bitmap also cannot be **scaled** — `graphics_draw_bitmap_in_rect` tiles rather than
+scales. So a sprite enemy bobs where a procedural one squashes and stretches. If you
+want real squash on a sprite, it has to be pre-rendered frames, not a transform.
+
 ## Verifying in the emulator
 
 The emulator **cannot inject a drag** — only `Touchdown` arrives, never `PositionUpdate` or

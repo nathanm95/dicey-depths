@@ -85,6 +85,7 @@ static Layer     *s_layer;
 static AppTimer  *s_frame;
 static AppTimer  *s_foe_timer;
 static Layout     s_L;
+static GBitmap   *s_foe_bmp;      // NULL when this enemy has no sprite yet
 
 static Combatant  s_hero, s_foe;
 static uint8_t    s_foe_id;
@@ -720,7 +721,31 @@ static void draw_foe(GContext *ctx, const Layout *L) {
     } else if (s_phase == PHASE_OVER && s_foe.hp <= 0) {
         pr = GRect(0, 0, 0, 0);
     }
-    portrait_draw(ctx, ed->shape, pr, tw_running(&s_foe_hit) && (tw_p(&s_foe_hit) < 300));
+    if (s_foe_bmp) {
+        // A bitmap cannot be squashed on this hardware: draw_bitmap_in_rect tiles
+        // rather than scales, and rotation is the only transform on offer. It is
+        // also far too slow to run every frame — rotating a 48x48 sprite at 30fps
+        // pegged the CPU at 100%, exactly the "performance limitations" the SDK
+        // warns about. So a sprite enemy BOBS while it idles, which is a plain
+        // blit, and rotation is spent only on the death tumble, where it plays
+        // once and a dropped frame costs nothing.
+        GSize bs = gbitmap_get_bounds(s_foe_bmp).size;
+        GPoint centre = GPoint((int16_t)(pr.origin.x + pr.size.w / 2),
+                               (int16_t)(pr.origin.y + pr.size.h / 2));
+        graphics_context_set_compositing_mode(ctx, GCompOpSet);
+        if (tw_running(&s_death)) {
+            int32_t p = tw_p(&s_death);
+            graphics_draw_rotated_bitmap(ctx, s_foe_bmp, GPoint(bs.w / 2, bs.h / 2),
+                                         DEG_TO_TRIGANGLE(10 + (80 * p) / 1000),
+                                         GPoint(centre.x, (int16_t)(centre.y + (p * 14) / 1000)));
+        } else {
+            graphics_draw_bitmap_in_rect(ctx, s_foe_bmp,
+                GRect((int16_t)(centre.x - bs.w / 2), (int16_t)(centre.y - bs.h / 2), bs.w, bs.h));
+        }
+        graphics_context_set_compositing_mode(ctx, GCompOpAssign);
+    } else {
+        portrait_draw(ctx, ed->shape, pr, tw_running(&s_foe_hit) && (tw_p(&s_foe_hit) < 300));
+    }
 
     int16_t tx = (int16_t)(L->portrait.origin.x + L->portrait.size.w + 5);
     int16_t tw_ = (int16_t)(r.origin.x + r.size.w - tx - 4);
@@ -1276,6 +1301,7 @@ static void window_disappear(Window *window) {
 }
 
 static void window_unload(Window *window) {
+    if (s_foe_bmp) { gbitmap_destroy(s_foe_bmp); s_foe_bmp = NULL; }
     layer_destroy(s_layer);
     s_layer = NULL;
     window_destroy(s_window);
@@ -1316,6 +1342,12 @@ void combat_window_push(uint8_t enemy_id) {
         c->uses_left = item_def(c->id)->uses;
         for (int s = 0; s < MAX_SLOTS; s++) c->filled[s] = -1;
     }
+
+    // Only the enemy actually on screen is held in memory, so the sprite count
+    // can grow without the heap growing with it.
+    if (s_foe_bmp) { gbitmap_destroy(s_foe_bmp); s_foe_bmp = NULL; }
+    uint32_t rid = portrait_resource_for(ed->shape);
+    if (rid) s_foe_bmp = gbitmap_create_with_resource(rid);
 
     s_dice_n = warrior_dice_for_level(g_run.level);
     s_foe_dice_n = run_enemy_dice(enemy_id);

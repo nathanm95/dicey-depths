@@ -56,6 +56,19 @@ static void eyes(GContext *ctx, GRect r, int16_t ly, uint16_t rad) {
     dot(ctx, X(65), ly, rad / 2 ? rad / 2 : 1, pc(GColorBlack));
 }
 
+// Pixel art exists for a handful of enemies so far. Anything not listed here
+// falls through to the procedural portrait below, so the roster never has a
+// hole in it and art can be added one enemy at a time.
+uint32_t portrait_resource_for(uint8_t shape) {
+    switch (shape) {
+        case SHAPE_RAT:    return RESOURCE_ID_IMAGE_ENEMY_RAT;
+        case SHAPE_SLIME:  return RESOURCE_ID_IMAGE_ENEMY_SLIME;
+        case SHAPE_KNIGHT: return RESOURCE_ID_IMAGE_ENEMY_KNIGHT;
+        case SHAPE_DRAKE:  return RESOURCE_ID_IMAGE_ENEMY_DRAKE;
+        default:           return 0;
+    }
+}
+
 void portrait_draw(GContext *ctx, uint8_t shape, GRect r, bool flash) {
     if (r.size.w < 8 || r.size.h < 8) return;
     s_flash = flash;

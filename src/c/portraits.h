@@ -7,3 +7,8 @@
 // squashed and stretched by passing a scaled rect, which is what gives the
 // idle bounce its life.
 void portrait_draw(GContext *ctx, uint8_t shape, GRect box, bool flash);
+
+// Some enemies have hand-made pixel art; the rest are still drawn in code.
+// Returns 0 when this shape has no sprite yet, and the procedural version
+// should be used instead.
+uint32_t portrait_resource_for(uint8_t shape);
