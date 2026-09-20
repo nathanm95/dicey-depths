@@ -105,7 +105,9 @@ bool item_is_reroll(uint8_t id);
 typedef enum {
     SHAPE_RAT = 0, SHAPE_SLIME, SHAPE_VACUUM, SHAPE_IMP, SHAPE_SPRITE,
     SHAPE_GHOST, SHAPE_TOAD, SHAPE_KNIGHT, SHAPE_COIL, SHAPE_DOCTOR,
-    SHAPE_RATKING, SHAPE_BANKER, SHAPE_MIRROR, SHAPE_HOST, SHAPE_DRAKE
+    SHAPE_RATKING, SHAPE_BANKER, SHAPE_MIRROR, SHAPE_HOST, SHAPE_DRAKE,
+    SHAPE_WASP, SHAPE_SPONGE, SHAPE_KETTLE, SHAPE_LANTERN, SHAPE_BOULDER,
+    SHAPE_SNAIL
 } ShapeId;
 
 typedef struct {
@@ -125,6 +127,28 @@ const EnemyDef *enemy_def(uint8_t id);
 uint8_t enemy_roll_for_depth(uint8_t depth);
 uint8_t enemy_boss_for_level(uint8_t campaign_level);
 
+// --- Classes ---------------------------------------------------------------
+// Each class is a different answer to one question: how do you introduce
+// uncertainty into a turn? The Warrior rerolls. The Robot has no dice at all —
+// it BUILDS a number and can push its luck too far.
+typedef enum { CLASS_WARRIOR = 0, CLASS_ROBOT, CLASS_COUNT } ClassId;
+
+typedef struct {
+    const char *name;
+    const char *blurb;
+    uint8_t     base_hp;
+    uint8_t     kit[3];
+    uint8_t     kit_n;
+} ClassDef;
+
+const ClassDef *class_def(uint8_t id);
+uint8_t class_dice_for_level(uint8_t klass, uint8_t level);
+
+// The Robot's CPU: PUSH adds this much, and going past CPU_BUST loses the lot.
+#define CPU_STEP_MIN 1
+#define CPU_STEP_MAX 3
+#define CPU_BUST     6
+
 // --- Rulesets --------------------------------------------------------------
 // Episodes are the real level design: each campaign level is a rule that
 // rewrites the game rather than a difficulty step. The maps stay thin so the
@@ -135,15 +159,24 @@ typedef enum {
     RULE_PARALLEL,      // Parallel Universe — statuses mean different things
     RULE_ELIMINATION,   // lose a card after every fight
     RULE_SUDDEN,        // half max HP, double gold
+    // Bonus Rounds, unlocked only once all five above are cleared.
+    RULE_HOARD,         // six slots from the start, but everything is tougher
+    RULE_SWARM,         // every enemy gets an extra die
+    RULE_BACKSTAGE,     // both at once, and no mercy
     RULE_COUNT
 } RuleId;
+#define RULE_CAMPAIGN_COUNT 5       // the first five are the campaign proper
+bool rule_is_bonus(uint8_t r);
+bool bonus_rounds_unlocked(void);
 
 const char *rule_name(RuleId r);
 const char *rule_blurb(RuleId r);
 
 // --- Run state -------------------------------------------------------------
 typedef enum {
-    NODE_EMPTY = 0, NODE_ENEMY, NODE_APPLE, NODE_CHEST, NODE_SHOP, NODE_ANVIL, NODE_DOOR
+    NODE_EMPTY = 0, NODE_ENEMY, NODE_APPLE, NODE_CHEST, NODE_SHOP, NODE_ANVIL, NODE_DOOR,
+    NODE_ELITE,     // a harder fight that guarantees rare loot
+    NODE_TRADE      // swap a card you own for a different one
 } NodeKind;
 
 typedef struct { uint8_t kind; uint8_t arg; bool used; } Node;
@@ -153,6 +186,7 @@ typedef enum { MODE_CAMPAIGN = 0, MODE_ENDLESS } GameMode;
 typedef struct {
     bool     active;
     uint8_t  mode;          // GameMode
+    uint8_t  klass;         // ClassId
     uint8_t  campaign_level;// 0..4 when MODE_CAMPAIGN
     uint8_t  rule;          // RuleId in force on this floor
     uint8_t  floor;         // 1..3 in campaign; unbounded in endless
@@ -178,10 +212,10 @@ extern RunState g_run;
 #define WARRIOR_BASE_HP     24
 #define WARRIOR_HP_PER_LVL   4
 
-uint8_t warrior_dice_for_level(uint8_t level);
+uint8_t warrior_dice_for_level(uint8_t level);   // == class_dice_for_level(WARRIOR, n)
 uint8_t run_equip_slots(void);
 uint8_t run_depth(void);            // campaign floor, or endless floor
-void    run_new(GameMode mode, uint8_t campaign_level);
+void    run_new(GameMode mode, uint8_t campaign_level, uint8_t klass);
 void    run_build_floor(void);
 void    run_descend(void);
 bool    run_backpack_add(uint8_t item_id);
@@ -190,6 +224,9 @@ bool    run_is_upgraded(bool equipped, int index);
 void    run_set_upgraded(bool equipped, int index);
 int16_t run_enemy_hp(uint8_t enemy_id);   // endless scaling folded in
 uint8_t run_enemy_dice(uint8_t enemy_id);
+// An elite is the same creature, tougher, and worth more.
+#define ELITE_HP_PCT   160
+#define ELITE_GOLD_MUL   2
 
 void    save_run(void);
 bool    load_run(void);
@@ -206,9 +243,10 @@ typedef struct {
 } ScoreEntry;
 
 typedef struct {
-    uint8_t     unlocked;               // campaign levels available, 1..5
+    uint8_t     unlocked;               // campaign levels available
     uint8_t     cleared;                // bitmask of levels beaten
     uint8_t     score_count;
+    uint16_t    achieved;               // bitmask, see achieve.h
     ScoreEntry  scores[SCORE_SLOTS];
 } Progress;
 
@@ -221,9 +259,10 @@ int  progress_submit_score(void);       // returns the rank, or -1
 
 // --- Windows ---------------------------------------------------------------
 void floor_window_push(void);
-void combat_window_push(uint8_t enemy_id);
+void combat_window_push(uint8_t enemy_id, bool elite);
 void backpack_window_push(void);
 void shop_window_push(uint8_t node_index);
+void trade_window_push(uint8_t node_index);
 void anvil_window_push(uint8_t node_index);
 void scores_window_push(void);
 void howto_window_push(void);

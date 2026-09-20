@@ -4,7 +4,7 @@ Progress g_prog;
 
 #define PERSIST_KEY_PROG 110
 #define PERSIST_KEY_PVER 111
-#define PROG_VERSION 2
+#define PROG_VERSION 3
 
 void progress_load(void) {
     memset(&g_prog, 0, sizeof(g_prog));
@@ -16,7 +16,7 @@ void progress_load(void) {
         g_prog.unlocked = 1;
     }
     if (g_prog.unlocked < 1) g_prog.unlocked = 1;
-    if (g_prog.unlocked > RULE_COUNT) g_prog.unlocked = RULE_COUNT;
+    if (g_prog.unlocked > RULE_CAMPAIGN_COUNT) g_prog.unlocked = RULE_CAMPAIGN_COUNT;
     if (g_prog.score_count > SCORE_SLOTS) g_prog.score_count = SCORE_SLOTS;
 }
 
@@ -27,9 +27,9 @@ void progress_save(void) {
 
 void progress_mark_cleared(uint8_t campaign_level) {
     g_prog.cleared |= (uint8_t)(1 << campaign_level);
-    if (campaign_level + 1 >= g_prog.unlocked && g_prog.unlocked < RULE_COUNT) {
+    if (campaign_level + 1 >= g_prog.unlocked && g_prog.unlocked < RULE_CAMPAIGN_COUNT) {
         g_prog.unlocked = (uint8_t)(campaign_level + 2);
-        if (g_prog.unlocked > RULE_COUNT) g_prog.unlocked = RULE_COUNT;
+        if (g_prog.unlocked > RULE_CAMPAIGN_COUNT) g_prog.unlocked = RULE_CAMPAIGN_COUNT;
     }
     progress_save();
 }

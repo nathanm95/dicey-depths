@@ -3,6 +3,8 @@
 #include "anim.h"
 #include "portraits.h"
 #include "combat.h"
+#include "sound.h"
+#include "achieve.h"
 
 // ---------------------------------------------------------------------------
 // The fight. This screen is the game.
@@ -30,7 +32,7 @@
 #define TAP_SLOP           8
 #define BURN_EXTINGUISH    2
 #define MAX_FLOAT          6
-#define ACTION_COUNT       2    // Limit Break, End turn — rerolling is a card now
+#define ACTION_MAX         3    // Robot needs PUSH / BANK / END; Warrior needs two
 
 typedef struct {
     uint8_t pips;
@@ -76,7 +78,8 @@ typedef struct {
     GRect cell[MAX_EQUIP];
     GRect slot[MAX_EQUIP][MAX_SLOTS];
     GRect die[MAX_FOE_DICE];
-    GRect action[2];
+    GRect action[ACTION_MAX];
+    GRect cpu;          // Robot only; zero-sized otherwise
 } Layout;
 
 // --- state -----------------------------------------------------------------
@@ -89,6 +92,8 @@ static GBitmap   *s_foe_bmp;      // NULL when this enemy has no sprite yet
 
 static Combatant  s_hero, s_foe;
 static uint8_t    s_foe_id;
+static bool       s_elite;
+static int16_t    s_hp_at_start;    // for the "no damage taken" achievement
 static Card       s_cards[MAX_EQUIP];
 static Card       s_foe_cards[MAX_FOE_EQUIP];
 static Die        s_dice[MAX_DICE];
@@ -101,6 +106,19 @@ static int8_t     s_cursor;
 static int8_t     s_pick_die;
 static bool       s_show_kit;
 static int8_t     s_grid_row;     // index of the top visible row of the card grid
+
+// --- Robot: the CPU ------------------------------------------------------
+// The Robot is handed no dice. It BUILDS each number: PUSH adds a little, BANK
+// locks it in as a die, and going past CPU_BUST loses the lot. Aiming for the
+// exact number a card wants is the whole game for this class, which is why the
+// fussy "=1" and "=6" cards matter so much more to it.
+static uint8_t    s_builds_left;
+static uint8_t    s_cpu;
+static bool       s_cpu_live;       // a build is under way
+static uint8_t    s_pending_frozen; // statuses waiting for the next banked die
+static uint8_t    s_pending_burn;
+static uint8_t    s_action_n;
+static Tween      s_cpu_fx;
 
 static char       s_toast[64];
 static Tween      s_toast_t;
@@ -122,6 +140,7 @@ static void check_end(void);
 static void grid_reveal(int8_t idx);
 
 static bool parallel(void) { return g_run.rule == RULE_PARALLEL; }
+static bool is_robot(void) { return g_run.klass == CLASS_ROBOT; }
 static int roll_d6(void)   { return 1 + (rand() % 6); }
 static void redraw(void)   { if (s_layer) layer_mark_dirty(s_layer); }
 
@@ -214,11 +233,13 @@ static void deal_damage(Combatant *t, int16_t amount, bool pierce, bool is_hero)
 
     if (is_hero) {
         tw_start(&s_hero_hit, 420);
+        sound_play(SFX_HURT);
         float_spawn(GPoint(s_L.hero_strip.origin.x + 30, s_L.hero_strip.origin.y), amount, COL_BAD);
         g_run.limit_charge += amount;
         if (!g_run.limit_ready && g_run.limit_charge >= (uint16_t)g_run.max_hp) {
             g_run.limit_ready = true;
             g_run.limit_charge = (uint16_t)g_run.max_hp;
+            sound_play(SFX_LIMIT);
             toast("LIMIT BREAK ready");
         }
     } else {
@@ -233,6 +254,7 @@ static void heal_up(Combatant *t, int16_t amount, bool is_hero) {
     if (amount <= 0) return;
     t->hp += amount;
     if (t->hp > t->max_hp) t->hp = t->max_hp;
+    if (is_hero) sound_play(SFX_HEAL);
     float_spawn(is_hero ? GPoint(s_L.hero_strip.origin.x + 30, s_L.hero_strip.origin.y)
                         : GPoint(s_L.portrait.origin.x + s_L.portrait.size.w / 2,
                                  s_L.portrait.origin.y + s_L.portrait.size.h / 2),
@@ -331,6 +353,10 @@ static void fire_card(Card *c, bool by_hero) {
     if (parallel() && had_fire) c->jam = 2;     // the Parallel Universe's Burn
 
     tw_start(&c->fx, 420);
+    if (by_hero) {
+        sound_play(SFX_FIRE);
+        if (bonus_hit) ach_unlock(ACH_SIX_BONUS);
+    }
 
     char eff[24];
     item_effect_label_up(c->id, c->upgraded, eff, sizeof(eff));
@@ -353,12 +379,25 @@ static void roll_side(bool hero) {
 
     cb->shield = 0;     // a shield lasts until your own next turn
 
-    for (int i = 0; i < n; i++) {
-        pool[i].pips = (uint8_t)roll_d6();
-        pool[i].used = false;
-        pool[i].burning = false;
-        tw_start(&pool[i].settle, (uint16_t)(420 + i * 130));
-        tw_stop(&pool[i].fly);
+    // The Robot is given nothing to start with — it builds its numbers during
+    // the turn, so its tray starts empty and its allowance is builds, not dice.
+    bool robot = hero && is_robot();
+    if (robot) {
+        s_dice_n = 0;
+        s_builds_left = class_dice_for_level(g_run.klass, g_run.level);
+        s_cpu = 0;
+        s_cpu_live = false;
+        s_pending_frozen = 0;
+        s_pending_burn = 0;
+        n = 0;
+    } else {
+        for (int i = 0; i < n; i++) {
+            pool[i].pips = (uint8_t)roll_d6();
+            pool[i].used = false;
+            pool[i].burning = false;
+            tw_start(&pool[i].settle, (uint16_t)(420 + i * 130));
+            tw_stop(&pool[i].fly);
+        }
     }
     for (int i = 0; i < cardn; i++) {
         for (int s = 0; s < MAX_SLOTS; s++) cards[i].filled[s] = -1;
@@ -375,7 +414,22 @@ static void roll_side(bool hero) {
     }
     if (hero) tw_start(&s_roll, 700);
 
-    if (cb->status[ST_FROZEN] > 0) {
+    // Statuses that attack the dice have nothing to attack yet on a Robot turn,
+    // so they queue up and land on the next number it banks.
+    if (robot) {
+        if (cb->status[ST_FROZEN] > 0) {
+            s_pending_frozen = 1;
+            cb->status[ST_FROZEN]--;
+            toast("Frozen: your next bank comes out a 1");
+        }
+        if (cb->status[ST_BURN] > 0) {
+            s_pending_burn = 1;
+            cb->status[ST_BURN]--;
+            toast(parallel() ? "Burn: your next bank jams its card"
+                             : "Burn: your next bank is alight, 2 HP to put out");
+        }
+    }
+    if (!robot && cb->status[ST_FROZEN] > 0) {
         if (parallel()) {
             for (int i = 0; i < n; i++) if (pool[i].pips > 1) pool[i].pips--;
             if (hero) toast("Frozen: every die drops by 1");
@@ -387,7 +441,7 @@ static void roll_side(bool hero) {
         }
         cb->status[ST_FROZEN]--;
     }
-    if (cb->status[ST_BURN] > 0) {
+    if (!robot && cb->status[ST_BURN] > 0) {
         uint8_t burn = cb->status[ST_BURN];
         for (int i = 0; i < n && burn > 0; i++) if (!pool[i].burning) { pool[i].burning = true; burn--; }
         cb->status[ST_BURN]--;
@@ -529,10 +583,15 @@ static void check_end(void) {
         tw_start(&s_death, 900);
         const EnemyDef *d = enemy_def(s_foe_id);
         uint16_t gold = d->gold;
+        if (s_elite) gold *= ELITE_GOLD_MUL;
         if (g_run.rule == RULE_SUDDEN) gold *= 2;    // Sudden Death pays double
         g_run.hp = s_hero.hp;
         g_run.gold += gold;
         save_run();
+        sound_play(SFX_WIN);
+        ach_unlock(ACH_FIRST_WIN);
+        if (s_elite) ach_unlock(ACH_ELITE);
+        if (s_hero.hp >= s_hp_at_start) ach_unlock(ACH_UNTOUCHED);
         toast("%s is out! +%d gold", d->name, gold);
         if (s_foe_timer) { app_timer_cancel(s_foe_timer); s_foe_timer = NULL; }
         app_timer_register(2100, finish, NULL);
@@ -540,6 +599,7 @@ static void check_end(void) {
         s_phase = PHASE_OVER;
         g_last_battle = BATTLE_LOST;
         g_run.hp = 0;
+        sound_play(SFX_LOSE);
         toast("You are out of the game.");
         if (s_foe_timer) { app_timer_cancel(s_foe_timer); s_foe_timer = NULL; }
         app_timer_register(1900, finish, NULL);
@@ -581,6 +641,7 @@ static void place_die(int8_t ci, int8_t di) {
     d->used = true;
     d->from = s_L.die[di];
     tw_start(&d->fly, 220);
+    sound_play(SFX_PLACE);
     if (card_ready(c)) fire_card(c, true);
 }
 
@@ -617,6 +678,63 @@ static void do_limit_break(void) {
     save_run();
 }
 
+// Turn the number the Robot has built into a die in the tray, carrying any
+// status that was waiting for it.
+static void cpu_bank(void) {
+    if (!is_robot()) return;
+    if (s_cpu == 0) { toast("Push the CPU first"); return; }
+    if (s_dice_n >= MAX_DICE) { toast("No room in the tray"); return; }
+
+    uint8_t v = s_cpu;
+    if (s_pending_frozen > 0) { v = 1; s_pending_frozen--; toast("Frozen: banked as a 1"); }
+
+    Die *d = &s_dice[s_dice_n];
+    memset(d, 0, sizeof(*d));
+    d->pips = v;
+    d->used = false;
+    if (s_pending_burn > 0) { d->burning = true; s_pending_burn--; }
+    tw_start(&d->settle, 420);
+    sound_play(SFX_BANK);
+    s_dice_n++;
+
+    s_cpu = 0;
+    s_cpu_live = false;
+    if (s_builds_left > 0) s_builds_left--;
+    redraw();
+}
+
+// PUSH. `guaranteed` is the Robot's Limit Break: a six, banked, no risk.
+static void cpu_push(bool guaranteed) {
+    if (!is_robot()) return;
+    if (s_builds_left == 0) { toast("Nothing left to build - end your turn"); return; }
+    if (s_dice_n >= MAX_DICE) { toast("No room in the tray"); return; }
+
+    if (guaranteed) {
+        s_cpu = CPU_BUST;
+        s_cpu_live = true;
+        tw_start(&s_cpu_fx, 400);
+        toast("AUTOROLL - a guaranteed six");
+        cpu_bank();
+        return;
+    }
+
+    s_cpu = (uint8_t)(s_cpu + CPU_STEP_MIN + (rand() % (CPU_STEP_MAX - CPU_STEP_MIN + 1)));
+    s_cpu_live = true;
+    tw_start(&s_cpu_fx, 300);
+
+    if (s_cpu > CPU_BUST) {
+        // Overshot. The build is gone, and so is the chance it represented.
+        toast("BUST at %d - that one is gone", s_cpu);
+        vibes_double_pulse();
+        sound_play(SFX_BUST);
+        ach_unlock(ACH_BUST);
+        s_cpu = 0;
+        s_cpu_live = false;
+        if (s_builds_left > 0) s_builds_left--;
+    }
+    redraw();
+}
+
 static void end_turn(void) {
     if (s_phase != PHASE_PLAYER) return;
     g_run.hp = s_hero.hp;
@@ -624,6 +742,26 @@ static void end_turn(void) {
 }
 
 static void do_action(int8_t a) {
+    if (is_robot()) {
+        switch (a) {
+            case 0:
+                // A charged Limit Break turns PUSH into AUTOROLL: the Robot's
+                // "guaranteed jackpot", spent as a risk-free six.
+                if (g_run.limit_ready && s_hero.status[ST_SILENCE] == 0) {
+                    g_run.limit_ready = false;
+                    g_run.limit_charge = 0;
+                    save_run();
+                    cpu_push(true);
+                } else {
+                    cpu_push(false);
+                }
+                break;
+            case 1: cpu_bank(); break;
+            case 2: end_turn(); break;
+            default: break;
+        }
+        return;
+    }
     switch (a) {
         case 0: do_limit_break(); break;
         case 1: end_turn(); break;
@@ -705,16 +843,24 @@ static void compute_layout(Layout *L) {
     // Dice tray, centred. During the foe's turn this shows ITS dice, so you can
     // see exactly what it drew.
     uint8_t n = (s_phase == PHASE_FOE) ? s_foe_dice_n : s_dice_n;
+    // The Robot's CPU sits in the tray beside the numbers it has already
+    // banked, so "what I have" and "what I am building" read as one row.
+    bool show_cpu = (s_phase != PHASE_FOE) && is_robot() && s_builds_left > 0;
+    int16_t slots = (int16_t)(n + (show_cpu ? 1 : 0));
+    if (slots < 1) slots = 1;
     int16_t ds = ui_die_size();
     int16_t gap = 5;
-    int16_t total = (int16_t)(n * ds + (n - 1) * gap);
+    int16_t total = (int16_t)(slots * ds + (slots - 1) * gap);
     int16_t x0 = (int16_t)(L->bounds.size.w / 2 - total / 2);
     for (int i = 0; i < MAX_FOE_DICE; i++) {
         L->die[i] = GRect((int16_t)(x0 + i * (ds + gap)), (int16_t)(L->dice_band.origin.y + 2), ds, ds);
     }
+    L->cpu = show_cpu
+        ? GRect((int16_t)(x0 + n * (ds + gap)), (int16_t)(L->dice_band.origin.y + 2), ds, ds)
+        : GRect(0, 0, 0, 0);
 
-    int16_t aw = (int16_t)((L->action_band.size.w - 4) / ACTION_COUNT);
-    for (int i = 0; i < ACTION_COUNT; i++) {
+    int16_t aw = (int16_t)((L->action_band.size.w - 4) / s_action_n);
+    for (int i = 0; i < s_action_n; i++) {
         L->action[i] = GRect((int16_t)(L->action_band.origin.x + 2 + i * aw),
                              L->action_band.origin.y, (int16_t)(aw - 2), L->action_band.size.h);
     }
@@ -790,7 +936,9 @@ static void draw_foe(GContext *ctx, const Layout *L) {
     int16_t tw_ = (int16_t)(r.origin.x + r.size.w - tx - 4);
     char hp[20];
     snprintf(hp, sizeof(hp), "%d/%d", s_foe.hp, s_foe.max_hp);
-    ui_draw_text_c(ctx, ed->name, ui_font_small(), GRect(tx, r.origin.y + 1, tw_, 17), COL_INK, GTextAlignmentLeft);
+    char nm[28];
+    snprintf(nm, sizeof(nm), "%s%s", s_elite ? "ELITE " : "", ed->name);
+    ui_draw_text_c(ctx, nm, ui_font_small(), GRect(tx, r.origin.y + 1, tw_, 17), COL_INK, GTextAlignmentLeft);
     ui_draw_text_c(ctx, hp, ui_font_tiny(), GRect(tx, r.origin.y + 16, tw_, 16), COL_INK, GTextAlignmentLeft);
     ui_draw_hp_bar(ctx, GRect(tx, (int16_t)(r.origin.y + 31), tw_, 7), s_foe.hp, s_foe_ghost, s_foe.max_hp, COL_FOE);
 
@@ -971,33 +1119,78 @@ static void draw_dice(GContext *ctx, const Layout *L) {
     }
 }
 
+// The CPU box. Colour carries the risk: comfortable, getting warm, one more
+// push and you lose it. That is the only warning the Robot gets, and it is the
+// whole decision.
+static void draw_cpu(GContext *ctx, const Layout *L) {
+    if (L->cpu.size.w == 0) return;
+    GRect r = L->cpu;
+    if (tw_running(&s_cpu_fx)) {
+        int32_t p = tw_p(&s_cpu_fx);
+        int32_t sc = 1000 + ((p < 300) ? (p / 2) : ((1000 - p) / 6));
+        r = rect_scale(r, sc, sc);
+    }
+    r.origin.y = (int16_t)(r.origin.y + anim_bob(900, 2, 0));
+
+    GColor fill = GColorWhite;
+    if (s_cpu >= CPU_BUST)     fill = COL_FIRE;
+    else if (s_cpu >= 4)       fill = COL_GOLD;
+    else if (s_cpu > 0)        fill = COL_OK;
+    ui_draw_panel(ctx, r, fill, COL_INK, true);
+
+    char v[6];
+    if (s_cpu == 0) snprintf(v, sizeof(v), "?");
+    else            snprintf(v, sizeof(v), "%d", s_cpu);
+    ui_draw_text_c(ctx, v, ui_font_body(),
+                   GRect(r.origin.x, (int16_t)(r.origin.y + r.size.h / 2 - 12),
+                         r.size.w, 24), COL_INK, GTextAlignmentCenter);
+}
+
 static void draw_hero_strip(GContext *ctx, const Layout *L) {
     GRect r = L->hero_strip;
     if (tw_running(&s_hero_hit)) {
         int32_t p = tw_p(&s_hero_hit);
         r.origin.x = (int16_t)(r.origin.x + (((p / 55) % 2) ? 3 : -3));
     }
-    char buf[36];
-    if (s_hero.shield > 0) snprintf(buf, sizeof(buf), "HP %d/%d  SH%d", s_hero.hp, s_hero.max_hp, s_hero.shield);
-    else                   snprintf(buf, sizeof(buf), "HP %d/%d", s_hero.hp, s_hero.max_hp);
+    char buf[40];
+    if (is_robot() && s_phase == PHASE_PLAYER)
+        snprintf(buf, sizeof(buf), "HP %d/%d  build %d", s_hero.hp, s_hero.max_hp, s_builds_left);
+    else if (s_hero.shield > 0)
+        snprintf(buf, sizeof(buf), "HP %d/%d  SH%d", s_hero.hp, s_hero.max_hp, s_hero.shield);
+    else
+        snprintf(buf, sizeof(buf), "HP %d/%d", s_hero.hp, s_hero.max_hp);
     ui_draw_text_c(ctx, buf, ui_font_tiny(), r, COL_INK, GTextAlignmentLeft);
     draw_status_row(ctx, &s_hero, r, GTextAlignmentRight);
 }
 
 static void draw_actions(GContext *ctx, const Layout *L) {
-    char fury[16];
-    if (g_run.limit_ready) snprintf(fury, sizeof(fury), "FURY");
-    else snprintf(fury, sizeof(fury), "FURY %d%%",
-                  (int)(g_run.max_hp ? (g_run.limit_charge * 100 / g_run.max_hp) : 0));
-    const char *labels[ACTION_COUNT] = { fury, "END TURN" };
+    char fury[16], push[16];
+    int pct = (int)(g_run.max_hp ? (g_run.limit_charge * 100 / g_run.max_hp) : 0);
+    const char *labels[ACTION_MAX];
 
-    for (int i = 0; i < ACTION_COUNT; i++) {
+    if (is_robot()) {
+        // PUSH becomes AUTO once the Limit Break is charged: same button, and
+        // the difference between a gamble and a certainty.
+        if (g_run.limit_ready) snprintf(push, sizeof(push), "AUTO");
+        else                   snprintf(push, sizeof(push), "PUSH %d%%", pct);
+        labels[0] = push;
+        labels[1] = "BANK";
+        labels[2] = "END";
+    } else {
+        if (g_run.limit_ready) snprintf(fury, sizeof(fury), "FURY");
+        else snprintf(fury, sizeof(fury), "FURY %d%%", pct);
+        labels[0] = fury;
+        labels[1] = "END TURN";
+    }
+
+    for (int i = 0; i < s_action_n; i++) {
         bool sel = (s_mode == SEL_BROWSE) && (s_cursor == s_card_n + i);
         GColor fill = GColorWhite;
         if (i == 0 && g_run.limit_ready) {
             // A charged Limit Break pulses so you cannot miss it.
             fill = (anim_bob(700, 100, 0) > 0) ? COL_FIRE : COL_GOLD;
         }
+        if (is_robot() && i == 0 && !g_run.limit_ready && s_builds_left == 0) fill = GColorLightGray;
         if (sel) fill = COL_CARD_SEL;
         ui_draw_panel(ctx, L->action[i], fill, COL_INK, sel);
         ui_draw_text_c(ctx, labels[i], ui_font_tiny(),
@@ -1079,6 +1272,7 @@ static void layer_update(Layer *layer, GContext *ctx) {
     draw_grid_scrollbar(ctx, L);
     draw_hero_strip(ctx, L);
     draw_dice(ctx, L);
+    draw_cpu(ctx, L);
     draw_actions(ctx, L);
     draw_floaters(ctx);
 
@@ -1144,7 +1338,7 @@ static int8_t hit_card(const Layout *L, GPoint p) {
 }
 
 static int8_t hit_action(const Layout *L, GPoint p) {
-    for (int i = 0; i < ACTION_COUNT; i++) {
+    for (int i = 0; i < s_action_n; i++) {
         if (grect_contains_point(&L->action[i], &p)) return (int8_t)i;
     }
     return -1;
@@ -1261,7 +1455,7 @@ static void next_free_die(int dir) {
 // Walk the cursor over cards then the three action buttons, stepping over any
 // empty grid slot — stopping on nothing is just a wasted press.
 static void move_cursor(int dir) {
-    int8_t last = (int8_t)(s_card_n + ACTION_COUNT - 1);
+    int8_t last = (int8_t)(s_card_n + s_action_n - 1);
     int8_t c = s_cursor;
     for (int guard = 0; guard <= last + 1; guard++) {
         c = (int8_t)(c + dir);
@@ -1317,7 +1511,11 @@ static void click_select(ClickRecognizerRef r, void *ctx) {
     const Card *c = &s_cards[s_cursor];
     if (c->id == ITEM_NONE) { toast("Nothing equipped there"); redraw(); return; }
     if (!c->disabled && c->filled[0] >= 0 && !card_ready(c)) { return_die_from(s_cursor); redraw(); return; }
-    if (!any_die_free()) { toast("No dice left - end your turn"); redraw(); return; }
+    if (!any_die_free()) {
+        toast(is_robot() ? "Nothing banked - push the CPU" : "No dice left - end your turn");
+        redraw();
+        return;
+    }
     s_mode = SEL_PICK;
     s_pick_die = -1;
     next_free_die(1);
@@ -1386,9 +1584,10 @@ static void window_unload(Window *window) {
     s_window = NULL;
 }
 
-void combat_window_push(uint8_t enemy_id) {
+void combat_window_push(uint8_t enemy_id, bool elite) {
     const EnemyDef *ed = enemy_def(enemy_id);
     s_foe_id = enemy_id;
+    s_elite = elite;
     g_last_battle = BATTLE_NONE;
     anim_reset();
 
@@ -1397,6 +1596,7 @@ void combat_window_push(uint8_t enemy_id) {
     memset(s_float, 0, sizeof(s_float));
     s_hero.hp = g_run.hp;         s_hero.max_hp = g_run.max_hp;
     s_foe.max_hp = run_enemy_hp(enemy_id);
+    if (s_elite) s_foe.max_hp = (int16_t)((s_foe.max_hp * ELITE_HP_PCT) / 100);
     s_foe.hp = s_foe.max_hp;
     s_foe_ghost = s_foe.hp;
     s_hero_ghost = s_hero.hp;
@@ -1428,8 +1628,17 @@ void combat_window_push(uint8_t enemy_id) {
     uint32_t rid = portrait_resource_for(ed->shape);
     if (rid) s_foe_bmp = gbitmap_create_with_resource(rid);
 
-    s_dice_n = warrior_dice_for_level(g_run.level);
+    s_hp_at_start = g_run.hp;
+    if (run_equip_slots() >= 6) ach_unlock(ACH_FULL_GRID);
+    s_action_n = (uint8_t)(is_robot() ? 3 : 2);
+    s_dice_n = is_robot() ? 0 : class_dice_for_level(g_run.klass, g_run.level);
+    s_builds_left = is_robot() ? class_dice_for_level(g_run.klass, g_run.level) : 0;
+    s_cpu = 0;
+    s_cpu_live = false;
+    s_pending_frozen = 0;
+    s_pending_burn = 0;
     s_foe_dice_n = run_enemy_dice(enemy_id);
+    if (s_elite && s_foe_dice_n < MAX_FOE_DICE) s_foe_dice_n++;
     s_drag_die = -1;
     s_hover_card = -1;
     s_dragging = false;

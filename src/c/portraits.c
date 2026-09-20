@@ -217,6 +217,81 @@ void portrait_draw(GContext *ctx, uint8_t shape, GRect r, bool flash) {
             dot(ctx, X(84), Y(60), (uint16_t)W(11), pc(GColorDarkGray));
             break;
 
+        case SHAPE_WASP: {
+            int16_t buzz = anim_bob(160, 2, 0);   // wings too fast to see properly
+            fill_tri(ctx, GPoint(X(30), Y(30)), GPoint(X(4), (int16_t)(Y(6) + buzz)),
+                     GPoint(X(34), Y(54)), pc(GColorCeleste));
+            fill_tri(ctx, GPoint(X(70), Y(30)), GPoint(X(96), (int16_t)(Y(6) - buzz)),
+                     GPoint(X(66), Y(54)), pc(GColorCeleste));
+            blob(ctx, GRect(X(30), Y(26), W(40), H(60)), pc(COL_GOLD));
+            graphics_context_set_fill_color(ctx, pc(GColorBlack));
+            graphics_fill_rect(ctx, GRect(X(30), Y(50), W(40), H(8)), 0, GCornerNone);
+            graphics_fill_rect(ctx, GRect(X(30), Y(68), W(40), H(8)), 0, GCornerNone);
+            dot(ctx, X(40), Y(36), er, pc(GColorBlack));
+            dot(ctx, X(60), Y(36), er, pc(GColorBlack));
+            break;
+        }
+
+        case SHAPE_SPONGE:
+            graphics_context_set_fill_color(ctx, pc(COL_GOLD));
+            graphics_fill_rect(ctx, GRect(X(10), Y(20), W(80), H(70)), 6, GCornersAll);
+            for (int i = 0; i < 6; i++) {
+                dot(ctx, (int16_t)(X(22) + (i % 3) * W(28)),
+                    (int16_t)(Y(34) + (i / 3) * H(30)), (uint16_t)W(7), pc(GColorWindsorTan));
+            }
+            eyes(ctx, r, Y(56), er);
+            break;
+
+        case SHAPE_KETTLE: {
+            blob(ctx, GRect(X(16), Y(38), W(68), H(54)), pc(GColorLightGray));
+            graphics_context_set_fill_color(ctx, pc(GColorDarkGray));
+            graphics_fill_rect(ctx, GRect(X(38), Y(26), W(24), H(14)), 3, GCornersAll);
+            fill_tri(ctx, GPoint(X(84), Y(52)), GPoint(X(102), Y(44)), GPoint(X(86), Y(66)),
+                     pc(GColorLightGray));
+            // steam, because what it does is set you on fire
+            for (int i = 0; i < 3; i++) {
+                dot(ctx, (int16_t)(X(50) + anim_bob((uint16_t)(600 + i * 130), (int16_t)W(6),
+                                                    (uint16_t)(i * 200))),
+                    (int16_t)(Y(20) - i * H(8)), (uint16_t)W(5), pc(GColorMelon));
+            }
+            eyes(ctx, r, Y(62), er);
+            break;
+        }
+
+        case SHAPE_LANTERN:
+            graphics_context_set_fill_color(ctx, pc(GColorDarkGray));
+            graphics_fill_rect(ctx, GRect(X(40), Y(4), W(20), H(14)), 2, GCornersAll);
+            graphics_context_set_fill_color(ctx, pc(COL_GOLD));
+            graphics_fill_rect(ctx, GRect(X(22), Y(18), W(56), H(64)), 5, GCornersAll);
+            graphics_context_set_fill_color(ctx, pc(GColorYellow));
+            graphics_fill_rect(ctx, GRect(X(32), Y(30), W(36), H(40)), 4, GCornersAll);
+            dot(ctx, X(40), Y(46), er, pc(GColorBlack));
+            dot(ctx, X(60), Y(46), er, pc(GColorBlack));
+            break;
+
+        case SHAPE_BOULDER:
+            blob(ctx, GRect(X(6), Y(26), W(88), H(68)), pc(GColorDarkGray));
+            blob(ctx, GRect(X(18), Y(34), W(26), H(18)), pc(GColorLightGray));
+            dot(ctx, X(38), Y(62), er, pc(GColorWhite));
+            dot(ctx, X(64), Y(62), er, pc(GColorWhite));
+            dot(ctx, X(38), Y(62), er / 2 ? er / 2 : 1, pc(GColorBlack));
+            dot(ctx, X(64), Y(62), er / 2 ? er / 2 : 1, pc(GColorBlack));
+            break;
+
+        case SHAPE_SNAIL:
+            blob(ctx, GRect(X(6), Y(58), W(72), H(32)), pc(GColorMelon));
+            dot(ctx, X(62), Y(48), (uint16_t)W(28), pc(GColorWindsorTan));
+            dot(ctx, X(62), Y(48), (uint16_t)W(18), pc(GColorPastelYellow));
+            dot(ctx, X(62), Y(48), (uint16_t)W(8),  pc(GColorWindsorTan));
+            graphics_context_set_stroke_color(ctx, pc(GColorMelon));
+            graphics_context_set_stroke_width(ctx, 2);
+            graphics_draw_line(ctx, GPoint(X(16), Y(60)), GPoint(X(10), Y(40)));
+            graphics_draw_line(ctx, GPoint(X(26), Y(60)), GPoint(X(30), Y(40)));
+            graphics_context_set_stroke_width(ctx, 1);
+            dot(ctx, X(10), Y(38), (uint16_t)W(5), pc(GColorBlack));
+            dot(ctx, X(30), Y(38), (uint16_t)W(5), pc(GColorBlack));
+            break;
+
         case SHAPE_DRAKE:
         default: {
             int16_t flap = anim_bob(700, (int16_t)H(9), 0);

@@ -191,3 +191,87 @@ void anvil_window_push(uint8_t node_index) {
     });
     window_stack_push(s_anvil_win, true);
 }
+
+// ---------------------------------------------------------------------------
+// The trading post: give up a card you own, take a different one. No gold
+// changes hands, which makes it the node you visit when your build is wrong
+// rather than when your purse is full.
+// ---------------------------------------------------------------------------
+static Window    *s_trade_win;
+static MenuLayer *s_trade_menu;
+static uint8_t    s_offer[MAX_EQUIP];
+
+static void build_offers(void) {
+    unsigned saved = (unsigned)rand();
+    for (uint8_t i = 0; i < MAX_EQUIP; i++) {
+        srand(stock_hash(g_run.floor, (uint32_t)(s_node + 77), (uint32_t)i));
+        uint8_t cand = item_roll_for_floor(g_run.floor);
+        for (int tries = 0; tries < 16 && already_owned(cand); tries++) {
+            cand = item_roll_for_floor(g_run.floor);
+        }
+        s_offer[i] = cand;
+    }
+    srand(saved);
+}
+
+static uint16_t trade_rows(MenuLayer *m, uint16_t s, void *c) { return run_equip_slots(); }
+static int16_t  trade_hh(MenuLayer *m, uint16_t s, void *c)   { return 20; }
+
+static void trade_header(GContext *ctx, const Layer *cell, uint16_t section, void *data) {
+    GRect r = ui_cell_inset(layer_get_bounds(cell));
+    ui_draw_text_c(ctx, "Trade away - pick one", ui_font_tiny(),
+                   GRect(r.origin.x + 4, r.origin.y, r.size.w - 8, 18), COL_INK, GTextAlignmentCenter);
+}
+
+static void trade_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *data) {
+    uint8_t id = g_run.equip[idx->row];
+    char t[44], sub[56];
+    if (id == ITEM_NONE) {
+        snprintf(t, sizeof(t), "Slot %d", idx->row + 1);
+        snprintf(sub, sizeof(sub), "empty");
+    } else {
+        snprintf(t, sizeof(t), "%s", item_def(id)->name);
+        snprintf(sub, sizeof(sub), "-> %s", item_def(s_offer[idx->row])->name);
+    }
+    menu_cell_basic_draw(ctx, cell, t, sub, NULL);
+}
+
+static void trade_select(MenuLayer *m, MenuIndex *idx, void *c) {
+    if (g_run.equip[idx->row] == ITEM_NONE) { vibes_short_pulse(); return; }
+    g_run.equip[idx->row] = s_offer[idx->row];
+    g_run.equip_up &= (uint8_t)~(1 << idx->row);   // a traded card arrives unimproved
+    if (s_node < g_run.node_count) g_run.nodes[s_node].used = true;
+    save_run();
+    vibes_short_pulse();
+    window_stack_remove(s_trade_win, true);
+}
+
+static void trade_load(Window *window) {
+    Layer *root = window_get_root_layer(window);
+    s_trade_menu = menu_layer_create(layer_get_bounds(root));
+    menu_layer_set_callbacks(s_trade_menu, NULL, (MenuLayerCallbacks) {
+        .get_num_rows = trade_rows, .draw_row = trade_draw, .select_click = trade_select,
+        .get_header_height = trade_hh, .draw_header = trade_header
+    });
+    menu_layer_set_highlight_colors(s_trade_menu, COL_OK, GColorWhite);
+    menu_layer_set_click_config_onto_window(s_trade_menu, window);
+    layer_add_child(root, menu_layer_get_layer(s_trade_menu));
+}
+
+static void trade_unload(Window *window) {
+    menu_layer_destroy(s_trade_menu);
+    s_trade_menu = NULL;
+    window_destroy(s_trade_win);
+    s_trade_win = NULL;
+}
+
+void trade_window_push(uint8_t node_index) {
+    s_node = node_index;
+    build_offers();
+    s_trade_win = window_create();
+    window_set_background_color(s_trade_win, COL_BG);
+    window_set_window_handlers(s_trade_win, (WindowHandlers) {
+        .load = trade_load, .unload = trade_unload
+    });
+    window_stack_push(s_trade_win, true);
+}

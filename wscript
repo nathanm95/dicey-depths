@@ -32,6 +32,7 @@ def configure(ctx):
             # scroll to and the grid correctly refuses to move.
             if os.environ.get('DD_BOOT_KIT'):
                 defines.append('DD_BOOT_KIT=1')
+            defines.append('DD_BOOT_CLASS=' + os.environ.get('DD_BOOT_CLASS', '0'))
             env.append_value('DEFINES', defines)
 
 

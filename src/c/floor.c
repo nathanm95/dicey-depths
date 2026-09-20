@@ -1,5 +1,6 @@
 #include "game.h"
 #include "ui.h"
+#include "achieve.h"
 
 // ---------------------------------------------------------------------------
 // The floor.
@@ -19,12 +20,24 @@ static bool door_open(void) { return g_run.foes_cleared >= g_run.foes_required; 
 
 static void node_line(const Node *n, char *title, size_t tl, char *sub, size_t sl) {
     switch (n->kind) {
-        case NODE_ENEMY: {
+        case NODE_ENEMY:
+        case NODE_ELITE: {
             const EnemyDef *e = enemy_def(n->arg);
-            snprintf(title, tl, "%s%s", e->boss ? "BOSS: " : "", e->name);
+            bool elite = (n->kind == NODE_ELITE);
+            snprintf(title, tl, "%s%s", e->boss ? "BOSS: " : (elite ? "ELITE " : ""), e->name);
             if (n->used) snprintf(sub, sl, "Beaten");
-            else snprintf(sub, sl, "%d HP  %d dice  %dg",
-                          run_enemy_hp(n->arg), run_enemy_dice(n->arg), e->gold);
+            else {
+                int16_t hp = run_enemy_hp(n->arg);
+                uint8_t dice = run_enemy_dice(n->arg);
+                uint16_t gold = e->gold;
+                if (elite) {
+                    hp = (int16_t)((hp * ELITE_HP_PCT) / 100);
+                    if (dice < MAX_FOE_DICE) dice++;
+                    gold = (uint16_t)(gold * ELITE_GOLD_MUL);
+                }
+                snprintf(sub, sl, "%d HP  %d dice  %dg%s",
+                         hp, dice, gold, elite ? "  +rare" : "");
+            }
             break;
         }
         case NODE_APPLE:
@@ -42,6 +55,10 @@ static void node_line(const Node *n, char *title, size_t tl, char *sub, size_t s
         case NODE_ANVIL:
             snprintf(title, tl, "Anvil");
             snprintf(sub, sl, n->used ? "Used" : "Upgrade a card");
+            break;
+        case NODE_TRADE:
+            snprintf(title, tl, "Trading post");
+            snprintf(sub, sl, n->used ? "Closed" : "Swap a card you own");
             break;
         case NODE_DOOR:
             snprintf(title, tl, "Door");
@@ -98,8 +115,9 @@ static void select_row(MenuLayer *m, MenuIndex *idx, void *c) {
 
     switch (n->kind) {
         case NODE_ENEMY:
+        case NODE_ELITE:
             if (n->used) { vibes_short_pulse(); return; }
-            combat_window_push(n->arg);
+            combat_window_push(n->arg, n->kind == NODE_ELITE);
             break;
         case NODE_APPLE:
             if (n->used) { vibes_short_pulse(); return; }
@@ -121,6 +139,10 @@ static void select_row(MenuLayer *m, MenuIndex *idx, void *c) {
             }
             break;
         case NODE_SHOP:  shop_window_push((uint8_t)idx->row);  break;
+        case NODE_TRADE:
+            if (n->used) { vibes_short_pulse(); return; }
+            trade_window_push((uint8_t)idx->row);
+            break;
         case NODE_ANVIL:
             if (n->used) { vibes_short_pulse(); return; }
             anvil_window_push((uint8_t)idx->row);
@@ -128,6 +150,7 @@ static void select_row(MenuLayer *m, MenuIndex *idx, void *c) {
         case NODE_DOOR:
             if (!door_open()) { vibes_short_pulse(); return; }
             run_descend();
+            if (g_run.mode == MODE_ENDLESS && g_run.floor >= 10) ach_unlock(ACH_DEPTH_10);
             menu_layer_set_selected_index(s_menu, MenuIndex(0, 0), MenuRowAlignCenter, false);
             menu_layer_reload_data(s_menu);
             break;
@@ -154,11 +177,17 @@ static void window_appear(Window *window) {
         g_run.foes_cleared++;
 
         bool was_boss = enemy_def(n->arg)->boss;
+        // An elite is worth fighting because it always leaves something rare.
+        if (n->kind == NODE_ELITE) {
+            uint8_t drop = item_roll_for_floor((uint8_t)(g_run.floor + 2));
+            if (run_backpack_add(drop)) vibes_short_pulse();
+        }
         if (g_run.rule == RULE_ELIMINATION) elimination_toll();
         save_run();
 
         if (was_boss && g_run.mode == MODE_CAMPAIGN) {
             progress_mark_cleared(g_run.campaign_level);
+            ach_unlock(ACH_CLEAR_EPISODE);
             g_run.active = false;
             clear_run();
             g_last_battle = BATTLE_NONE;

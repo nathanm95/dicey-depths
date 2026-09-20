@@ -31,7 +31,8 @@ the layout assumes a large colour screen and the input model assumes a touchscre
 
 ```
 src/c/
-  dicey.c       main(), title menu, campaign select, best runs, how-to, results screen
+  dicey.c       main(), title, class select, campaign select, best runs, achievements, how-to
+  classes.c     the playable classes and their starting kit
   splash.c      the launch splash — Dicey drops in, title lands, then it leaves
   game.h        every shared type and constant
   combat.c      THE GAME: dice, the 2x2 card grid, statuses, enemy AI, touch, animation
@@ -42,7 +43,9 @@ src/c/
   score.c       campaign unlocks + the local top-10 endless table
   items.c       equipment catalogue, curated loot tables, status text
   enemies.c     enemy roster including one boss per campaign level
-  rules.c       the five campaign rulesets
+  rules.c       the five campaign rulesets plus three Bonus Rounds
+  sound.c       chiptune SFX and the persisted on/off toggle
+  achieve.c     achievements
   portraits.c   procedural enemy art — flat shapes, no PNG assets
   ui.c/.h       round-aware layout, palette, dice, HP bars
   anim.c/.h     integer tween toolkit (no FPU on this hardware)
@@ -150,6 +153,46 @@ Agreed up front; don't relitigate without asking.
   **local top-10 table** — no phone, no backend.
 - **All eight statuses ship**, each announcing in plain English what it did the moment it
   lands. On a screen with no room for a tooltip, narration is how the game teaches itself.
+
+## Classes
+
+`ClassDef` in `classes.c`; `g_run.klass` picks one at run start. Each class is a different
+answer to "how does uncertainty enter a turn?".
+
+- **Warrior** — rolls dice, rerolls them with the Reroll card. Limit Break: Fury.
+- **Robot** — **no dice at all**. It BUILDS each number: PUSH adds 1-3 to a CPU meter, BANK
+  locks it in as a die, past `CPU_BUST` (6) the build is lost. Aiming for the exact number a
+  card wants is this class's whole game, which is why the fussy `=1` / `=6` cards matter far
+  more to it. Limit Break: Autoroll — PUSH becomes AUTO, a guaranteed six with no risk.
+
+The Robot needs a third action button, so `s_action_n` is per-class (2 or 3) rather than a
+constant. Statuses that attack dice have nothing to attack when a Robot turn starts, so
+Frozen and Burn queue in `s_pending_*` and land on the next number it banks.
+
+## Elites, the trading post, Bonus Rounds
+
+- **Elites** (`NODE_ELITE`) are the same creature at `ELITE_HP_PCT`, one extra die, double
+  gold, and a guaranteed rare drop. From floor 2, one of the three enemies is usually one.
+  This is what makes "which two do I fight" a decision rather than a formality.
+- **Trading post** (`NODE_TRADE`) swaps a card you own for a different one, no gold. It is
+  the node you want when your build is wrong rather than when your purse is full. A traded
+  card arrives unimproved.
+- **Bonus Rounds** are rulesets 5-7, shown in the campaign list only once all five real
+  episodes are cleared (`bonus_rounds_unlocked()`). Endless deliberately rotates only the
+  campaign five — the Bonus Rounds are a reward, not a random ambush.
+
+## Sound
+
+`speaker_play_notes` takes MIDI notes and square/triangle/sawtooth waveforms — a Game Boy in
+all but name, which suits a game whose inspiration had its music written on one.
+
+**Only Time 2 has a speaker. Round 2 has none.** The API is declared on both platforms, so
+no `#ifdef` is needed: the calls are simply silent on gabbro. The consequence for design is
+firm — **nothing in `sound.c` may carry information that is not already on screen**, because
+half the players will never hear any of it.
+
+The on/off toggle lives on the title screen and persists (`PERSIST_KEY_SOUND`).
+`sound_play()` also respects `speaker_is_muted()`, so the watch's own setting wins.
 
 ## Round displays slice text, and it is never obvious in the emulator screenshot
 

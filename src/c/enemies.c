@@ -24,16 +24,25 @@ static const EnemyDef s_enemies[] = {
   /* 8*/ {"Tesla Coil",   28, 3, {29, 23, 23},     3,  8, 4, 6, SHAPE_COIL,    false},
   /* 9*/ {"Witch Doctor", 30, 3, {33, 30, 23},     3,  9, 4, 6, SHAPE_DOCTOR,  false},
 
+  // Mechanics first, fiction fitted afterwards — the same principle that turned
+  // a health-draining monster into a vacuum cleaner.
+  /*15*/ {"Wasp",         14, 3, {23, 23, 24},     3,  5, 2, 4, SHAPE_WASP,    false},
+  /*16*/ {"Sponge",       30, 2, {25, 25},         2,  6, 2, 5, SHAPE_SPONGE,  false},
+  /*17*/ {"Kettle",       20, 2, {27, 23},         2,  6, 3, 6, SHAPE_KETTLE,  false},
+  /*18*/ {"Lantern",      22, 2, {31, 23},         2,  7, 3, 6, SHAPE_LANTERN, false},
+  /*19*/ {"Boulder",      38, 1, {32},             1,  9, 4, 6, SHAPE_BOULDER, false},
+  /*20*/ {"Snail",        34, 2, {28, 25},         2,  8, 4, 6, SHAPE_SNAIL,   false},
+
   // One boss per campaign level, themed to its ruleset.
-  /*10*/ {"The Rat King", 40, 3, {40, 23, 25},     3, 20, 3, 3, SHAPE_RATKING, true},
-  /*11*/ {"The Banker",   46, 3, {36, 23, 25},     3, 22, 3, 3, SHAPE_BANKER,  true},
-  /*12*/ {"The Mirror",   44, 3, {37, 26, 25},     3, 24, 3, 3, SHAPE_MIRROR,  true},
-  /*13*/ {"The Host",     50, 4, {38, 39, 23, 25}, 4, 26, 3, 3, SHAPE_HOST,    true},
-  /*14*/ {"The Drake",    58, 4, {34, 35, 27, 25}, 4, 30, 3, 3, SHAPE_DRAKE,   true},
+  /*21*/ {"The Rat King", 40, 3, {40, 23, 25},     3, 20, 3, 3, SHAPE_RATKING, true},
+  /*22*/ {"The Banker",   46, 3, {36, 23, 25},     3, 22, 3, 3, SHAPE_BANKER,  true},
+  /*23*/ {"The Mirror",   44, 3, {37, 26, 25},     3, 24, 3, 3, SHAPE_MIRROR,  true},
+  /*24*/ {"The Host",     50, 4, {38, 39, 23, 25}, 4, 26, 3, 3, SHAPE_HOST,    true},
+  /*25*/ {"The Drake",    58, 4, {34, 35, 27, 25}, 4, 30, 3, 3, SHAPE_DRAKE,   true},
 };
 
 #define ENEMY_TOTAL ((uint8_t)(sizeof(s_enemies) / sizeof(s_enemies[0])))
-#define BOSS_FIRST 10
+#define BOSS_FIRST 21
 
 const EnemyDef *enemy_def(uint8_t id) {
     return (id >= ENEMY_TOTAL) ? &s_enemies[0] : &s_enemies[id];

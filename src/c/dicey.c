@@ -2,6 +2,8 @@
 #include "ui.h"
 #include "anim.h"
 #include "portraits.h"
+#include "sound.h"
+#include "achieve.h"
 
 // ---------------------------------------------------------------------------
 // Dicey Depths — title, menus and results.
@@ -188,6 +190,48 @@ void scores_window_push(void) {
     window_stack_push(s_score_win, true);
 }
 
+// --- achievements ----------------------------------------------------------
+static Window    *s_ach_win;
+static MenuLayer *s_ach_menu;
+
+static uint16_t ach_rows(MenuLayer *m, uint16_t s, void *c) { return ACH_COUNT; }
+
+static void ach_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *data) {
+    AchId id = (AchId)idx->row;
+    bool got = ach_has(id);
+    char t[40];
+    // A locked one still names itself; hiding the goal hides the reason to try.
+    snprintf(t, sizeof(t), "%s%s", got ? "" : "- ", ach_name(id));
+    menu_cell_basic_draw(ctx, cell, t, ach_blurb(id), NULL);
+}
+
+static void ach_load(Window *window) {
+    Layer *root = window_get_root_layer(window);
+    s_ach_menu = menu_layer_create(layer_get_bounds(root));
+    menu_layer_set_callbacks(s_ach_menu, NULL, (MenuLayerCallbacks) {
+        .get_num_rows = ach_rows, .draw_row = ach_draw
+    });
+    menu_layer_set_highlight_colors(s_ach_menu, COL_GOLD, GColorBlack);
+    menu_layer_set_click_config_onto_window(s_ach_menu, window);
+    layer_add_child(root, menu_layer_get_layer(s_ach_menu));
+}
+
+static void ach_unload(Window *window) {
+    menu_layer_destroy(s_ach_menu);
+    s_ach_menu = NULL;
+    window_destroy(s_ach_win);
+    s_ach_win = NULL;
+}
+
+static void achievements_window_push(void) {
+    s_ach_win = window_create();
+    window_set_background_color(s_ach_win, COL_BG);
+    window_set_window_handlers(s_ach_win, (WindowHandlers) {
+        .load = ach_load, .unload = ach_unload
+    });
+    window_stack_push(s_ach_win, true);
+}
+
 // --- how to play -----------------------------------------------------------
 static const char HOWTO_TEXT[] =
 "You are a walking six-sided die on a game show. Roll your dice, then spend "
@@ -208,6 +252,11 @@ static const char HOWTO_TEXT[] =
 "Rare cards take two dice and use the total.\n"
 "A card fires ONCE per turn, so four cards and four dice means four actions - "
 "a spare die is worth nothing without a card to put it in.\n\n"
+"CLASSES\n"
+"The Warrior rolls dice and rerolls them. The Robot has no dice at all - it "
+"builds each number on a CPU meter: PUSH adds a little, BANK locks it in, and "
+"going past six loses the lot. Aiming for the exact number a card wants is the "
+"Robot's whole game.\n\n"
 "THE WARRIOR\n"
 "You always carry a Reroll card. Feed it a die and that die is rerolled and "
 "handed straight back to you, unspent. It is the one card that works more than "
@@ -284,13 +333,77 @@ void howto_window_push(void) {
     window_stack_push(s_howto_win, true);
 }
 
+// --- class select ----------------------------------------------------------
+// Both classes are available from the start. With only two of an eventual six
+// there is not enough roster for unlocking to feel like progression rather than
+// a locked door; gate it behind a campaign clear later if that changes.
+static Window    *s_class_win;
+static MenuLayer *s_class_menu;
+static uint8_t    s_pending_mode, s_pending_level;
+
+static uint16_t class_rows(MenuLayer *m, uint16_t s, void *c) { return CLASS_COUNT; }
+static int16_t  class_cell_h(MenuLayer *m, MenuIndex *i, void *c) { return 58; }
+
+static void class_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *data) {
+    GRect r = ui_cell_inset(layer_get_bounds(cell));
+    const ClassDef *cd = class_def((uint8_t)idx->row);
+    bool hi = menu_cell_layer_is_highlighted(cell);
+    ui_draw_text_c(ctx, cd->name, ui_font_small(),
+                   GRect(r.origin.x + 4, r.origin.y + 1, r.size.w - 8, 18),
+                   hi ? GColorWhite : COL_INK, GTextAlignmentLeft);
+    ui_draw_text_c(ctx, cd->blurb, ui_font_tiny(),
+                   GRect(r.origin.x + 4, r.origin.y + 18, r.size.w - 8, 34),
+                   hi ? GColorWhite : COL_FRAME, GTextAlignmentLeft);
+}
+
+static void class_select(MenuLayer *m, MenuIndex *idx, void *c) {
+    run_new((GameMode)s_pending_mode, s_pending_level, (uint8_t)idx->row);
+    window_stack_remove(s_class_win, false);
+    if (s_camp_win) window_stack_remove(s_camp_win, false);
+    floor_window_push();
+}
+
+static void class_load(Window *window) {
+    Layer *root = window_get_root_layer(window);
+    s_class_menu = menu_layer_create(layer_get_bounds(root));
+    menu_layer_set_callbacks(s_class_menu, NULL, (MenuLayerCallbacks) {
+        .get_num_rows = class_rows, .draw_row = class_draw,
+        .select_click = class_select, .get_cell_height = class_cell_h
+    });
+    menu_layer_set_highlight_colors(s_class_menu, COL_HERO, GColorWhite);
+    menu_layer_set_click_config_onto_window(s_class_menu, window);
+    layer_add_child(root, menu_layer_get_layer(s_class_menu));
+}
+
+static void class_unload(Window *window) {
+    menu_layer_destroy(s_class_menu);
+    s_class_menu = NULL;
+    window_destroy(s_class_win);
+    s_class_win = NULL;
+}
+
+static void class_window_push(uint8_t mode, uint8_t level) {
+    s_pending_mode = mode;
+    s_pending_level = level;
+    s_class_win = window_create();
+    window_set_background_color(s_class_win, COL_BG);
+    window_set_window_handlers(s_class_win, (WindowHandlers) {
+        .load = class_load, .unload = class_unload
+    });
+    window_stack_push(s_class_win, true);
+}
+
 // --- campaign select -------------------------------------------------------
-static uint16_t camp_rows(MenuLayer *m, uint16_t s, void *c) { return RULE_COUNT; }
+static uint16_t camp_rows(MenuLayer *m, uint16_t s, void *c) {
+    return (uint16_t)(RULE_CAMPAIGN_COUNT +
+                      (bonus_rounds_unlocked() ? (RULE_COUNT - RULE_CAMPAIGN_COUNT) : 0));
+}
 static int16_t  camp_cell_h(MenuLayer *m, MenuIndex *i, void *c) { return 46; }
 
 static void camp_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *data) {
     GRect r = ui_cell_inset(layer_get_bounds(cell));
-    bool locked = idx->row >= g_prog.unlocked;
+    // Bonus Rounds only appear once they are earned, so a visible one is open.
+    bool locked = !rule_is_bonus((uint8_t)idx->row) && (idx->row >= g_prog.unlocked);
     bool done   = (g_prog.cleared >> idx->row) & 1;
     // Drawing the cell by hand means honouring the highlight ourselves —
     // otherwise the selected row is dark text on a dark fill.
@@ -310,9 +423,7 @@ static void camp_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *da
 
 static void camp_select(MenuLayer *m, MenuIndex *idx, void *c) {
     if (idx->row >= g_prog.unlocked) { vibes_short_pulse(); return; }
-    run_new(MODE_CAMPAIGN, (uint8_t)idx->row);
-    window_stack_remove(s_camp_win, false);
-    floor_window_push();
+    class_window_push(MODE_CAMPAIGN, (uint8_t)idx->row);
 }
 
 static void camp_load(Window *window) {
@@ -344,7 +455,8 @@ static void campaign_window_push(void) {
 }
 
 // --- title -----------------------------------------------------------------
-enum { ROW_CONTINUE = 0, ROW_CAMPAIGN, ROW_ENDLESS, ROW_SCORES, ROW_HOWTO, ROW_MAX };
+enum { ROW_CONTINUE = 0, ROW_CAMPAIGN, ROW_ENDLESS, ROW_SCORES,
+       ROW_ACHIEVE, ROW_SOUND, ROW_HOWTO, ROW_MAX };
 
 static bool has_run(void) { return g_run.active; }
 static int  title_row_for(int row) { return has_run() ? row : row + 1; }
@@ -382,6 +494,18 @@ static void title_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *d
             snprintf(t, sizeof(t), "Best runs");
             snprintf(s, sizeof(s), "%d recorded", g_prog.score_count);
             break;
+        case ROW_ACHIEVE: {
+            int got = 0;
+            for (int i = 0; i < ACH_COUNT; i++) if (ach_has((AchId)i)) got++;
+            snprintf(t, sizeof(t), "Achievements");
+            snprintf(s, sizeof(s), "%d of %d", got, ACH_COUNT);
+            break;
+        }
+        case ROW_SOUND:
+            snprintf(t, sizeof(t), "Sound: %s", sound_enabled() ? "on" : "off");
+            snprintf(s, sizeof(s), PBL_IF_ROUND_ELSE("No speaker on this watch",
+                                                     "Tap to change"));
+            break;
         default:
             snprintf(t, sizeof(t), "How to play");
             snprintf(s, sizeof(s), "Rules, statuses, controls");
@@ -394,8 +518,14 @@ static void title_select(MenuLayer *m, MenuIndex *idx, void *c) {
     switch (title_row_for(idx->row)) {
         case ROW_CONTINUE: floor_window_push(); break;
         case ROW_CAMPAIGN: campaign_window_push(); break;
-        case ROW_ENDLESS:  run_new(MODE_ENDLESS, 0); floor_window_push(); break;
+        case ROW_ENDLESS:  class_window_push(MODE_ENDLESS, 0); break;
         case ROW_SCORES:   scores_window_push(); break;
+        case ROW_ACHIEVE:  achievements_window_push(); break;
+        case ROW_SOUND:
+            sound_set_enabled(!sound_enabled());
+            if (sound_enabled()) sound_play(SFX_LIMIT);
+            menu_layer_reload_data(s_title_menu);
+            break;
         default:           howto_window_push(); break;
     }
 }
@@ -429,6 +559,7 @@ int main(void) {
     // combat window opts back out for itself, because it owns its own drags.
     app_touch_navigation_enable(true);
 
+    sound_init();
     progress_load();
     load_run();
 
@@ -443,7 +574,7 @@ int main(void) {
 #ifdef DD_BOOT_COMBAT
     // Debug entry point: skip the menus and drop straight into a fight, so the
     // combat screen can be captured in an emulator that cannot send SELECT.
-    run_new(MODE_CAMPAIGN, DD_BOOT_RULE);
+    run_new(MODE_CAMPAIGN, DD_BOOT_RULE, DD_BOOT_CLASS);
 #ifdef DD_BOOT_KIT
     {
         static const uint8_t kit[MAX_EQUIP] = {0, 1, ITEM_REROLL, 42, 47, 14};

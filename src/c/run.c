@@ -5,14 +5,10 @@ BattleResult g_last_battle = BATTLE_NONE;
 
 #define PERSIST_KEY_RUN 100
 #define PERSIST_KEY_VER 101
-#define PERSIST_VERSION 3
+#define PERSIST_VERSION 4
 
 uint8_t warrior_dice_for_level(uint8_t level) {
-    // Two dice, then three, then four — one step per floor of a three-floor
-    // run, so every descent is a visible jump in what you can do.
-    if (level >= 3) return 4;
-    if (level >= 2) return 3;
-    return 2;
+    return class_dice_for_level(CLASS_WARRIOR, level);
 }
 
 uint8_t run_depth(void) { return g_run.floor; }
@@ -22,6 +18,8 @@ uint8_t run_depth(void) { return g_run.floor; }
 // slots are a late-game complication: by then you know the cards well enough
 // that holding two of them in your head is a fair thing to ask.
 uint8_t run_equip_slots(void) {
+    // Hoard and Backstage hand you the full grid immediately, and charge for it.
+    if (g_run.rule == RULE_HOARD || g_run.rule == RULE_BACKSTAGE) return 6;
     if (g_run.mode == MODE_ENDLESS) return (g_run.floor >= 5) ? 6 : 4;
     return (g_run.campaign_level >= 3) ? 6 : 4;   // Elimination Round onward
 }
@@ -29,6 +27,9 @@ uint8_t run_equip_slots(void) {
 // --- endless scaling -------------------------------------------------------
 int16_t run_enemy_hp(uint8_t enemy_id) {
     int16_t base = (int16_t)enemy_def(enemy_id)->hp;
+    if (g_run.rule == RULE_HOARD || g_run.rule == RULE_BACKSTAGE) {
+        base = (int16_t)((base * 160) / 100);
+    }
     if (g_run.mode != MODE_ENDLESS) return base;
     // +12% per floor, compounding gently rather than exponentially.
     int32_t hp = ((int32_t)base * (100 + 12 * g_run.floor)) / 100;
@@ -38,6 +39,7 @@ int16_t run_enemy_hp(uint8_t enemy_id) {
 
 uint8_t run_enemy_dice(uint8_t enemy_id) {
     uint8_t d = enemy_def(enemy_id)->dice;
+    if (g_run.rule == RULE_SWARM || g_run.rule == RULE_BACKSTAGE) d++;
     if (g_run.mode == MODE_ENDLESS) d = (uint8_t)(d + g_run.floor / 4);
     if (d > MAX_FOE_DICE) d = MAX_FOE_DICE;
     return d;
@@ -87,17 +89,22 @@ void run_build_floor(void) {
             if (!clash) break;
             id = enemy_roll_for_depth(g_run.floor);
         }
-        g_run.nodes[g_run.node_count].kind = NODE_ENEMY;
+        // From floor 2 one of the three is an elite: tougher, worth double, and
+        // it drops something rare. That is what makes "which two do I fight"
+        // an actual decision rather than a formality.
+        bool elite = (g_run.floor >= 2) && (i == 0) && ((rand() % 100) < 60);
+        g_run.nodes[g_run.node_count].kind = elite ? NODE_ELITE : NODE_ENEMY;
         g_run.nodes[g_run.node_count].arg  = id;
         g_run.node_count++;
     }
 
-    uint8_t kinds[4];
+    uint8_t kinds[5];
     uint8_t kn = 0;
     kinds[kn++] = NODE_APPLE;
     kinds[kn++] = NODE_CHEST;
     if (g_run.floor >= 2) kinds[kn++] = NODE_SHOP;
     if (g_run.floor >= 2) kinds[kn++] = NODE_ANVIL;
+    if (g_run.floor >= 2) kinds[kn++] = NODE_TRADE;
 
     for (uint8_t i = 0; i < 2 && g_run.node_count < MAX_NODES - 1; i++) {
         uint8_t k = kinds[(rand() + i) % kn];
@@ -121,30 +128,33 @@ static void pick_rule(void) {
     if (g_run.mode == MODE_CAMPAIGN) {
         g_run.rule = g_run.campaign_level;
     } else {
-        g_run.rule = (g_run.floor < 4) ? RULE_PLAIN : (uint8_t)(1 + rand() % (RULE_COUNT - 1));
+        // Endless rotates the campaign rulesets only — the Bonus Rounds are a
+        // reward for finishing the campaign, not a random ambush.
+        g_run.rule = (g_run.floor < 4) ? RULE_PLAIN
+                                       : (uint8_t)(1 + rand() % (RULE_CAMPAIGN_COUNT - 1));
     }
 }
 
-void run_new(GameMode mode, uint8_t campaign_level) {
+void run_new(GameMode mode, uint8_t campaign_level, uint8_t klass) {
     memset(&g_run, 0, sizeof(g_run));
     g_run.active = true;
     g_run.mode   = (uint8_t)mode;
+    g_run.klass  = klass;
     g_run.campaign_level = campaign_level;
     g_run.floor  = 1;
     g_run.level  = 1;
-    g_run.max_hp = WARRIOR_BASE_HP;
+    g_run.max_hp = class_def(klass)->base_hp;
 
     for (int i = 0; i < MAX_EQUIP; i++)    g_run.equip[i] = ITEM_NONE;
     for (int i = 0; i < MAX_BACKPACK; i++) g_run.pack[i]  = ITEM_NONE;
 
     pick_rule();
 
-    // The Warrior opens with a sword and a shield: one card that wants a big
-    // die and one happy with a small one, so the very first roll already poses
-    // the question the whole game is about.
-    g_run.equip[0] = 0;             // Sword
-    g_run.equip[1] = 1;             // Shield
-    g_run.equip[2] = ITEM_REROLL;   // the Warrior always brings this
+    // A starting kit of one card that wants a big number and one happy with a
+    // small one, so the very first turn already poses the question the whole
+    // game is about. The third card is the class's signature.
+    const ClassDef *cd = class_def(klass);
+    for (uint8_t i = 0; i < cd->kit_n && i < MAX_EQUIP; i++) g_run.equip[i] = cd->kit[i];
 
     if (g_run.rule == RULE_GREED) {
         // Curse of Greed opens generous and then bills you for it every turn.
@@ -156,7 +166,7 @@ void run_new(GameMode mode, uint8_t campaign_level) {
         run_set_upgraded(true, 1);
     }
     if (g_run.rule == RULE_SUDDEN) {
-        g_run.max_hp = WARRIOR_BASE_HP / 2;
+        g_run.max_hp = (int16_t)(cd->base_hp / 2);
     }
 
     g_run.hp = g_run.max_hp;
