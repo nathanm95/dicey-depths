@@ -56,10 +56,17 @@ void sound_set_enabled(bool on) {
     if (!on) speaker_stop();
 }
 
+// Starting a sequence while another is still playing is what took the emulator
+// down: winning a fight fires SFX_WIN and the first-win achievement fires
+// SFX_LIMIT a microsecond later, and the two overlapping calls killed the whole
+// qemu process - so the app did not merely exit, it vanished along with the
+// emulator. Stop whatever is playing before starting anything, and never let
+// two sounds be asked for in the same instant.
 void sound_play(SfxId id) {
     if (!s_on || id >= SFX_COUNT) return;
     if (speaker_is_muted()) return;          // the watch's own setting wins
     const Sfx *f = &s_sfx[id];
     if (!f->notes || !f->n) return;
+    speaker_stop();
     speaker_play_notes(f->notes, f->n, 80);
 }

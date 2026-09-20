@@ -203,6 +203,22 @@ half the players will never hear any of it.
 The on/off toggle lives on the title screen and persists (`PERSIST_KEY_SOUND`).
 `sound_play()` also respects `speaker_is_muted()`, so the watch's own setting wins.
 
+### Never start a sound while one is playing
+
+Two overlapping `speaker_play_notes()` calls **kill the whole qemu process**. Not the app —
+the emulator. The symptom is baffling: the watch comes back showing "Install an app to
+continue", because pebble-tool silently respawns a fresh emulator with no app on it, so it
+looks nothing like a crash and nothing appears in the logs.
+
+It was reproducible on winning the first fight, where `SFX_WIN` and the first-win
+achievement's `SFX_LIMIT` fired within microseconds of each other. `sound_play()` now calls
+`speaker_stop()` first, and `ach_unlock()` is deliberately silent — an achievement nearly
+always lands at the same moment as something else that makes a noise.
+
+If the emulator ever "uninstalls itself", check `ps -o pid,etime` on `qemu-pebble` first: a
+process younger than your session means it restarted, and that points at the emulator dying
+rather than at your app.
+
 ## Round displays slice text, and it is never obvious in the emulator screenshot
 
 Two separate traps, both of which shipped before being caught:
