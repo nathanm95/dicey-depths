@@ -65,7 +65,7 @@ static int16_t get_header_height(MenuLayer *m, uint16_t s, void *c) {
 }
 
 static void draw_header(GContext *ctx, const Layer *cell, uint16_t section, void *data) {
-    GRect r = layer_get_bounds(cell);
+    GRect r = ui_cell_inset(layer_get_bounds(cell));
     char a[40], b[40];
     if (g_run.mode == MODE_ENDLESS) snprintf(a, sizeof(a), "Endless - Floor %d", g_run.floor);
     else snprintf(a, sizeof(a), "Floor %d/%d - %s", g_run.floor, FLOOR_COUNT, rule_name((RuleId)g_run.rule));

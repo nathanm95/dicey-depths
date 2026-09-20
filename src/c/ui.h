@@ -31,6 +31,12 @@
 #define COL_FRAME       GColorDarkGray
 
 int16_t ui_half_width_at(const GRect *bounds, int16_t y);
+
+// A MenuLayer hands a cell the full layer width. On a round display that is
+// wider than the glass everywhere except the vertical centre, so a cell drawn by
+// hand must inset itself or its text is sliced off at both ends. Insets to the
+// inscribed square, which is safe at every y. A no-op on a rectangle.
+GRect ui_cell_inset(GRect r);
 GRect   ui_band(const GRect *bounds, int16_t y, int16_t h, int16_t pad);
 uint32_t ui_isqrt(uint32_t n);
 

@@ -114,8 +114,17 @@ Agreed up front; don't relitigate without asking.
 - A run is **3 floors**. Floors 1-2 hold three enemies and two support nodes; clearing any
   **two** enemies opens the door, so the third fight is an explicit gold-versus-health trade.
   Floor 3 is an apple then the boss.
-- **Four equipment cards in a 2x2 grid that never scrolls.** Reading the whole board at once
-  *is* the puzzle. Four dice maximum (2 / 3 / 4 on floors 1 / 2 / 3).
+- **Four equipment cards in a 2x2 grid that never scrolls — early on.** Reading the whole
+  board at once *is* the puzzle, so the early game never asks you to scroll. Four dice
+  maximum (2 / 3 / 4 on floors 1 / 2 / 3).
+- **Six slots arrive late**, from campaign level 4 (Elimination Round) and endless floor 5 —
+  see `run_equip_slots()`. The grid then scrolls, **in whole rows only**: Pebble can clip a
+  whole layer but not a context to a sub-rect, so a half-scrolled row would spill over the
+  HUD. Snapping to rows means every drawn cell is fully inside the grid and no clipping is
+  needed. `MAX_EQUIP` is the ceiling (6); `run_equip_slots()` is what is unlocked.
+- **A card's condition is drawn inside its slot box**, not on the effect line — the box is
+  the thing that accepts the die. `cond_label_short()` exists because a ~20px box cannot
+  hold the word "even"; lists use the full words via `cond_label()`.
 - **A card fires once per turn** (`Card.spent`, cleared in `roll_side()`). This is what makes
   a fourth die worthless without a fourth card, and it is why filling the grid is the build.
 - **The Reroll card is the one deliberate exception** to once-per-turn, and is always in the
@@ -131,6 +140,20 @@ Agreed up front; don't relitigate without asking.
   **local top-10 table** — no phone, no backend.
 - **All eight statuses ship**, each announcing in plain English what it did the moment it
   lands. On a screen with no room for a tooltip, narration is how the game teaches itself.
+
+## Round displays slice text, and it is never obvious in the emulator screenshot
+
+Two separate traps, both of which shipped before being caught:
+
+- **Scrolling text** needs `text_layer_enable_screen_text_flow_and_paging()` plus
+  `scroll_layer_set_paging()`. A fixed inset cannot work, because a circle is narrow at the
+  top and bottom and full width in the middle — any single inset either clips the first and
+  last lines or wastes the middle ones. The text layer must already be **in the view
+  hierarchy** when flow is enabled (the API measures where it sits), and the content size
+  must be measured *after*, since flow changes every line break.
+- **Hand-drawn MenuLayer cells** get handed the full layer width and must inset themselves
+  with `ui_cell_inset()`, which insets to the inscribed square — safe at every y.
+  `menu_cell_basic_draw()` handles this itself; anything drawing its own text does not.
 
 ## Artwork: generating sprites that the hardware can actually show
 

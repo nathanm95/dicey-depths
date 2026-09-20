@@ -100,6 +100,7 @@ static SelMode    s_mode;
 static int8_t     s_cursor;
 static int8_t     s_pick_die;
 static bool       s_show_kit;
+static int8_t     s_grid_row;     // index of the top visible row of the card grid
 
 static char       s_toast[64];
 static Tween      s_toast_t;
@@ -118,6 +119,7 @@ static uint8_t    s_plan_n, s_plan_i;
 
 static void compute_layout(Layout *L);
 static void check_end(void);
+static void grid_reveal(int8_t idx);
 
 static bool parallel(void) { return g_run.rule == RULE_PARALLEL; }
 static int roll_d6(void)   { return 1 + (rand() % 6); }
@@ -412,9 +414,11 @@ static void begin_player_turn(void) {
     s_mode = SEL_BROWSE;
     s_pick_die = -1;
     s_cursor = 0;
+    s_grid_row = 0;
     for (int i = 0; i < s_card_n; i++) {
         if (s_cards[i].id != ITEM_NONE) { s_cursor = (int8_t)i; break; }
     }
+    grid_reveal(s_cursor);
     roll_side(true);
 
     // Curse of Greed opens generous and bills you every single turn.
@@ -618,6 +622,20 @@ static void do_action(int8_t a) {
 }
 
 // --- layout ----------------------------------------------------------------
+static int8_t grid_rows(void)    { return (int8_t)((s_card_n + 1) / 2); }
+static int8_t grid_max_row(void) { int8_t m = (int8_t)(grid_rows() - 2); return m > 0 ? m : 0; }
+
+// Keep the cursor on screen. Called after any cursor move and at the start of a
+// turn, so the selection is never sitting on a row you cannot see.
+static void grid_reveal(int8_t idx) {
+    if (idx < 0 || idx >= s_card_n) return;
+    int8_t row = (int8_t)(idx / 2);
+    if (row < s_grid_row) s_grid_row = row;
+    else if (row > s_grid_row + 1) s_grid_row = (int8_t)(row - 1);
+    if (s_grid_row > grid_max_row()) s_grid_row = grid_max_row();
+    if (s_grid_row < 0) s_grid_row = 0;
+}
+
 static void compute_layout(Layout *L) {
     L->bounds = s_layer ? layer_get_bounds(s_layer) : GRect(0, 0, PBL_DISPLAY_WIDTH, PBL_DISPLAY_HEIGHT);
     int16_t H = L->bounds.size.h;
@@ -645,14 +663,25 @@ static void compute_layout(Layout *L) {
     if (ps > 52) ps = 52;
     L->portrait = GRect(L->foe_band.origin.x + 4, L->foe_band.origin.y + 3, ps, ps);
 
-    // 2x2 card grid. Four cards, always visible, never scrolls — reading the
-    // whole board at once IS the puzzle.
-    int16_t cw = (int16_t)((L->grid.size.w - 4) / 2);
+    // Two columns, two visible rows. With more than four cards the grid scrolls,
+    // but ONLY in whole rows: Pebble has no way to clip a context to a sub-rect
+    // (only whole layers clip), so a half-scrolled row would spill over the HUD.
+    // Snapping to rows means every drawn cell is fully inside the grid, and no
+    // clipping is needed at all.
+    int16_t bar = (int16_t)((s_card_n > 4) ? 7 : 0);   // room for the scrollbar
+    int16_t cw = (int16_t)((L->grid.size.w - bar - 4) / 2);
     int16_t ch = (int16_t)((L->grid.size.h - 3) / 2);
     for (int i = 0; i < MAX_EQUIP; i++) {
-        int16_t col = (int16_t)(i % 2), row = (int16_t)(i / 2);
+        int16_t row = (int16_t)(i / 2);
+        int16_t vis = (int16_t)(row - s_grid_row);
+        if (i >= s_card_n || vis < 0 || vis > 1) {
+            L->cell[i] = GRect(0, 0, 0, 0);     // off-window: also fails hit tests
+            for (int s = 0; s < MAX_SLOTS; s++) L->slot[i][s] = GRect(0, 0, 0, 0);
+            continue;
+        }
+        int16_t col = (int16_t)(i % 2);
         L->cell[i] = GRect((int16_t)(L->grid.origin.x + col * (cw + 4)),
-                           (int16_t)(L->grid.origin.y + row * (ch + 3)), cw, ch);
+                           (int16_t)(L->grid.origin.y + vis * (ch + 3)), cw, ch);
         const ItemDef *d = item_def(s_cards[i].id);
         int16_t ss = (int16_t)(ch - 20);
         if (ss > 22) ss = 22;
@@ -829,15 +858,15 @@ static void draw_card(GContext *ctx, const Layout *L, int i) {
                        COL_HERO, GTextAlignmentRight);
     }
 
-    // "any" is the absence of a restriction, so saying it earns nothing and
-    // costs four characters the cell does not have.
-    char pre[12] = "";
-    if (!(d->slots == 1 && d->cond[0].kind == COND_ANY)) snprintf(pre, sizeof(pre), "%s ", cond);
-
+    // The condition is written inside the slot box, which is the thing that
+    // actually accepts the die — so the line below the name is free to be
+    // nothing but the effect. That matters: once the grid reserves a strip for
+    // its scrollbar a cell is about sixty pixels wide, and "=6 dmg9,BRN" on one
+    // line simply does not fit.
     if (c->disabled)      snprintf(line, sizeof(line), "SHOCKED");
     else if (c->spent)    snprintf(line, sizeof(line), "used");
     else if (c->jam > 0)  snprintf(line, sizeof(line), "JAMMED %d", c->jam);
-    else                  snprintf(line, sizeof(line), "%s%s%s", pre, eff, c->weakened ? " !" : "");
+    else                  snprintf(line, sizeof(line), "%s%s", eff, c->weakened ? " !" : "");
     ui_draw_text_c(ctx, line, ui_font_tiny(),
                    GRect((int16_t)(r.origin.x + 4), (int16_t)(r.origin.y + 15),
                          (int16_t)(r.size.w - 8 - slot_w), 16), COL_INK, GTextAlignmentLeft);
@@ -847,14 +876,15 @@ static void draw_card(GContext *ctx, const Layout *L, int i) {
         if (c->filled[s] >= 0) {
             ui_draw_die(ctx, sr, s_dice[c->filled[s]].pips, false, GColorWhite, COL_INK);
         } else {
-            graphics_context_set_stroke_color(ctx, COL_FRAME);
+            graphics_context_set_stroke_color(ctx, COL_INK);
             graphics_draw_round_rect(ctx, sr, 3);
-            if (d->slots > 1) {
-                char cl[10];
-                cond_label(d->cond[s], cl, sizeof(cl));
+            char cl[10];
+            cond_label_short(d->cond[s], cl, sizeof(cl));
+            // "any" takes anything, so an empty box says it better than any label.
+            if (cl[0]) {
                 ui_draw_text_c(ctx, cl, ui_font_tiny(),
                                GRect(sr.origin.x, (int16_t)(sr.origin.y + 1), sr.size.w, 14),
-                               COL_FRAME, GTextAlignmentCenter);
+                               COL_INK, GTextAlignmentCenter);
             }
         }
     }
@@ -879,6 +909,26 @@ static void draw_die_at(GContext *ctx, const Die *d, GRect r, bool blind, bool s
         graphics_draw_round_rect(ctx, grect_inset(r, GEdgeInsets(-3)), 5);
         graphics_context_set_stroke_width(ctx, 1);
     }
+}
+
+// Only drawn when the grid holds more than it can show. A thumb whose size and
+// position track the window makes "there is another row down there" obvious
+// without spending a cell on saying so.
+static void draw_grid_scrollbar(GContext *ctx, const Layout *L) {
+    if (s_card_n <= 4) return;
+    int8_t rows = grid_rows();
+    int16_t x = (int16_t)(L->grid.origin.x + L->grid.size.w - 5);
+    int16_t top = L->grid.origin.y;
+    int16_t h = L->grid.size.h;
+
+    graphics_context_set_fill_color(ctx, GColorLightGray);
+    graphics_fill_rect(ctx, GRect(x, top, 3, h), 1, GCornersAll);
+
+    int16_t th = (int16_t)((h * 2) / rows);
+    if (th < 10) th = 10;
+    int16_t ty = (int16_t)(top + ((h - th) * s_grid_row) / (rows - 2 > 0 ? rows - 2 : 1));
+    graphics_context_set_fill_color(ctx, COL_HERO);
+    graphics_fill_rect(ctx, GRect(x, ty, 3, th), 1, GCornersAll);
 }
 
 static void draw_dice(GContext *ctx, const Layout *L) {
@@ -1012,7 +1062,11 @@ static void layer_update(Layer *layer, GContext *ctx) {
     graphics_fill_rect(ctx, L->bounds, 0, GCornerNone);
 
     draw_foe(ctx, L);
-    for (int i = 0; i < MAX_EQUIP; i++) draw_card(ctx, L, i);
+    for (int i = 0; i < MAX_EQUIP; i++) {
+        if (L->cell[i].size.w == 0) continue;   // scrolled out of the window
+        draw_card(ctx, L, i);
+    }
+    draw_grid_scrollbar(ctx, L);
     draw_hero_strip(ctx, L);
     draw_dice(ctx, L);
     draw_actions(ctx, L);
@@ -1133,6 +1187,18 @@ static void touch_handler(const TouchEvent *e, void *ctx) {
                 s_hover_card = -1;
                 break;
             }
+            // Not carrying a die, and the gesture started over the grid: a
+            // vertical swipe there scrolls it a row.
+            if (!s_dragging && !tapped && s_card_n > 4 &&
+                grect_contains_point(&L->grid, &s_touch_start) &&
+                (dy > 20 || dy < -20)) {
+                s_grid_row = (int8_t)(s_grid_row + (dy < 0 ? 1 : -1));
+                if (s_grid_row < 0) s_grid_row = 0;
+                if (s_grid_row > grid_max_row()) s_grid_row = grid_max_row();
+                s_drag_die = -1;
+                redraw();
+                break;
+            }
             s_dragging = false;
             s_hover_card = -1;
 
@@ -1208,6 +1274,7 @@ static void click_up(ClickRecognizerRef r, void *ctx) {
     if (s_show_kit) { s_show_kit = false; redraw(); return; }
     if (s_phase != PHASE_PLAYER) return;
     move_cursor(-1);
+    grid_reveal(s_cursor);
     redraw();
 }
 
@@ -1215,6 +1282,7 @@ static void click_down(ClickRecognizerRef r, void *ctx) {
     if (s_show_kit) { s_show_kit = false; redraw(); return; }
     if (s_phase != PHASE_PLAYER) return;
     move_cursor(1);
+    grid_reveal(s_cursor);
     redraw();
 }
 
@@ -1325,7 +1393,8 @@ void combat_window_push(uint8_t enemy_id) {
 
     // The player's four cards map 1:1 onto the grid, empty slots included, so
     // a card never moves between fights.
-    s_card_n = MAX_EQUIP;
+    s_card_n = run_equip_slots();
+    s_grid_row = 0;
     for (int i = 0; i < MAX_EQUIP; i++) {
         Card *c = &s_cards[i];
         memset(c, 0, sizeof(*c));

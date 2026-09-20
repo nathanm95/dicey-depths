@@ -26,6 +26,19 @@ int16_t ui_half_width_at(const GRect *bounds, int16_t y) {
 #endif
 }
 
+GRect ui_cell_inset(GRect r) {
+#if defined(PBL_ROUND)
+    // The inscribed square of the circle is width / sqrt(2); 707/1000 is close
+    // enough and keeps it in integers.
+    int16_t safe = (int16_t)(((int32_t)PBL_DISPLAY_WIDTH * 707) / 1000);
+    int16_t margin = (int16_t)((PBL_DISPLAY_WIDTH - safe) / 2);
+    return GRect((int16_t)(r.origin.x + margin), r.origin.y,
+                 (int16_t)(r.size.w - margin * 2), r.size.h);
+#else
+    return r;
+#endif
+}
+
 GRect ui_band(const GRect *bounds, int16_t y, int16_t h, int16_t pad) {
     // A band must fit the circle at BOTH its edges, so take the tighter of the
     // two. Measuring only the midpoint would let a tall band's corners spill

@@ -17,9 +17,11 @@ Up/Down to move, Select to pick a die up and Select again to drop it. Tap the en
 Select, to see exactly what it is carrying; nothing it does should ever be a surprise.
 
 Each card takes a die that matches its slot — *any*, *odd*, *even*, *4+*, *3-*, or an exact
-number. Rare cards take two dice and use the total. **A card fires once per turn**, so a
-spare die is worth nothing without a card to put it in — filling all four slots is most of
-the build.
+number, shown in the little box on the card. Rare cards take two dice and use the total.
+**A card fires once per turn**, so a spare die is worth nothing without a card to put it in
+— filling your slots is most of the build. Fussy cards pay better: one that only accepts a 1
+hits far harder than one that takes anything, and is dead weight on the turn you don't roll
+one. Deeper in you carry six cards instead of four, and the grid scrolls.
 
 **The Warrior** always carries a **Reroll** card: feed it a die and that die is rerolled and
 handed straight back to you, unspent. It is the one card that works more than once a turn —

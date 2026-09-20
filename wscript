@@ -23,9 +23,16 @@ def configure(ctx):
         enemy = os.environ.get('DD_BOOT_ENEMY', '0')
         rule = os.environ.get('DD_BOOT_RULE', '0')
         for env in ctx.all_envs.values():
-            env.append_value('DEFINES', ['DD_BOOT_COMBAT=1',
-                                         'DD_BOOT_ENEMY=' + enemy,
-                                         'DD_BOOT_RULE=' + rule])
+            defines = ['DD_BOOT_COMBAT=1',
+                       'DD_BOOT_ENEMY=' + enemy,
+                       'DD_BOOT_RULE=' + rule]
+            # DD_BOOT_KIT=1 also fills every unlocked equipment slot, which is the
+            # only way to exercise the scrolling grid: the cursor skips empty
+            # slots, so with the default three-card kit there is nothing to
+            # scroll to and the grid correctly refuses to move.
+            if os.environ.get('DD_BOOT_KIT'):
+                defines.append('DD_BOOT_KIT=1')
+            env.append_value('DEFINES', defines)
 
 
 def build(ctx):

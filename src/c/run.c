@@ -5,7 +5,7 @@ BattleResult g_last_battle = BATTLE_NONE;
 
 #define PERSIST_KEY_RUN 100
 #define PERSIST_KEY_VER 101
-#define PERSIST_VERSION 2
+#define PERSIST_VERSION 3
 
 uint8_t warrior_dice_for_level(uint8_t level) {
     // Two dice, then three, then four — one step per floor of a three-floor
@@ -16,6 +16,15 @@ uint8_t warrior_dice_for_level(uint8_t level) {
 }
 
 uint8_t run_depth(void) { return g_run.floor; }
+
+// Four cards fit the grid at once, and seeing your whole hand is the puzzle, so
+// four is the default and the early game never asks you to scroll. The last two
+// slots are a late-game complication: by then you know the cards well enough
+// that holding two of them in your head is a fair thing to ask.
+uint8_t run_equip_slots(void) {
+    if (g_run.mode == MODE_ENDLESS) return (g_run.floor >= 5) ? 6 : 4;
+    return (g_run.campaign_level >= 3) ? 6 : 4;   // Elimination Round onward
+}
 
 // --- endless scaling -------------------------------------------------------
 int16_t run_enemy_hp(uint8_t enemy_id) {
@@ -181,7 +190,8 @@ bool run_backpack_add(uint8_t item_id) {
 }
 
 int run_equip_free_slot(void) {
-    for (int i = 0; i < MAX_EQUIP; i++) if (g_run.equip[i] == ITEM_NONE) return i;
+    uint8_t n = run_equip_slots();
+    for (int i = 0; i < n; i++) if (g_run.equip[i] == ITEM_NONE) return i;
     return -1;
 }
 

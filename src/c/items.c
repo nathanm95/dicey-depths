@@ -75,6 +75,28 @@ static const ItemDef s_items[] = {
     // Feeding it a die rerolls THAT die and gives it straight back, so the cost
     // is the card's allowance rather than the die itself.
     /*41 */ {"Reroll",      1, {C_ANY},        {{EFF_REROLL, 0, 0, 0}, E_NONE}, 1, 1, 12},
+
+    // --- Sixes ------------------------------------------------------------
+    // A 6 is the roll you are happiest to see and the one hardest to place,
+    // since so many cards want something small or something odd. These give it
+    // somewhere to go, and pay accordingly.
+    /*42 */ {"Sunburst",    1, {C_EXACT(6)},   {{EFF_DAMAGE, 0, 9, 0}, {EFF_INFLICT, 0, 0, ST_BURN}}, 0, 2, 18},
+    /*43 */ {"Six Shooter", 1, {C_EXACT(6)},   {{EFF_DAMAGE, 0, 7, 0}, {EFF_SELF, 0, 0, ST_FURY}}, 1, 3, 24},
+    /*44 */ {"Crown",       1, {C_EXACT(6)},   {{EFF_SHIELD, 0, 8, 0}, {EFF_HEAL, 0, 4, 0}}, 0, 2, 17},
+    /*45 */ {"Loaded Die",  1, {C_MIN(5)},     {{EFF_DAMAGE, 2, 1, 0}, E_NONE}, 0, 2, 16},
+    /*46 */ {"Jackpot",     2, {C_EXACT(6), C_EXACT(6)}, {{EFF_DAMAGE, 0, 24, 0}, E_NONE}, 0, 3, 28},
+
+    // --- Fussy, but worth it ----------------------------------------------
+    // Cards with a narrow mouth and a big payoff. They turn a die you would
+    // have thrown away into the best move of the turn — and are dead weight on
+    // the turn the roll does not cooperate. That trade is the whole point.
+    /*47 */ {"Stiletto",    1, {C_EXACT(1)},   {{EFF_DAMAGE, 0, 8, 0}, E_NONE}, 0, 2, 16},
+    /*48 */ {"Snake Eyes",  2, {C_EXACT(1), C_EXACT(1)}, {{EFF_DAMAGE, 0, 20, 0}, E_NONE}, 0, 3, 26},
+    /*49 */ {"Garrote",     1, {C_MAX(2)},     {{EFF_DAMAGE, 0, 6, 0}, {EFF_INFLICT, 0, 0, ST_POISON}}, 0, 2, 17},
+    /*50 */ {"Pin",         1, {C_EXACT(2)},   {{EFF_DAMAGE, 0, 7, 0}, E_NONE}, 0, 1, 11},
+    /*51 */ {"Trident",     1, {C_EXACT(3)},   {{EFF_DAMAGE, 0, 9, 0}, E_NONE}, 0, 2, 15},
+    /*52 */ {"Quarterstaff",1, {C_EXACT(4)},   {{EFF_DAMAGE, 0, 6, 0}, {EFF_SHIELD, 0, 4, 0}}, 0, 2, 15},
+    /*53 */ {"Gambit",      1, {C_EXACT(1)},   {{EFF_REROLL, 0, 0, 0}, {EFF_SHIELD, 0, 5, 0}}, 2, 2, 16},
 };
 
 #define ITEM_TOTAL ((uint8_t)(sizeof(s_items) / sizeof(s_items[0])))
@@ -89,9 +111,11 @@ bool item_is_reroll(uint8_t id)   { return id == ITEM_REROLL; }
 // --- Loot tables, curated by depth -----------------------------------------
 // Depth 1 holds nothing that a player with two dice cannot solve. Two-slot
 // cards wait for depth 3, when the fourth die arrives.
-static const uint8_t s_early[] = {0, 1, 2, 3, 5, 7};
-static const uint8_t s_mid[]   = {2, 3, 4, 6, 7, 8, 9, 10, 11, 16};
-static const uint8_t s_late[]  = {9, 10, 11, 12, 13, 14, 15, 17, 18, 19, 20, 21, 22};
+static const uint8_t s_early[] = {0, 1, 2, 3, 5, 7, 50};
+static const uint8_t s_mid[]   = {2, 3, 4, 6, 7, 8, 9, 10, 11, 16,
+                                  42, 44, 45, 47, 49, 51, 52, 53};
+static const uint8_t s_late[]  = {9, 10, 11, 12, 13, 14, 15, 17, 18, 19, 20, 21, 22,
+                                  42, 43, 44, 45, 46, 47, 48, 49, 51, 52, 53};
 
 uint8_t item_roll_for_floor(uint8_t depth) {
     if (depth <= 1)      return s_early[rand() % (sizeof(s_early))];
@@ -124,6 +148,18 @@ void cond_label(Cond c, char *out, size_t len) {
     }
 }
 
+void cond_label_short(Cond c, char *out, size_t len) {
+    switch (c.kind) {
+        case COND_ANY:   out[0] = '\0';                   break;
+        case COND_ODD:   snprintf(out, len, "O");          break;
+        case COND_EVEN:  snprintf(out, len, "E");          break;
+        case COND_EXACT: snprintf(out, len, "=%d", c.arg); break;
+        case COND_MIN:   snprintf(out, len, "%d+", c.arg); break;
+        case COND_MAX:   snprintf(out, len, "%d-", c.arg); break;
+        default:         out[0] = '\0';                   break;
+    }
+}
+
 // --- Labels ----------------------------------------------------------------
 static void effect_tag(const Effect *e, int8_t bonus, char *out, size_t len) {
     const char *verb;
@@ -139,7 +175,7 @@ static void effect_tag(const Effect *e, int8_t bonus, char *out, size_t len) {
     }
     int add = e->add + bonus;
     if (e->mult == 0) {
-        snprintf(out, len, "%s %d", verb, add < 0 ? -add : add);
+        snprintf(out, len, "%s%d", verb, add < 0 ? -add : add);
     } else if (e->mult == 1 && add == 0) {
         snprintf(out, len, "%s", verb);
     } else if (e->mult == 1) {

@@ -16,6 +16,7 @@ static MenuLayer *s_shop_menu, *s_anvil_menu;
 static uint8_t    s_node;
 static uint8_t    s_stock[SHOP_STOCK];
 static bool       s_sold[SHOP_STOCK];
+static uint8_t    s_stock_n;
 
 // A small deterministic hash so the same shop always holds the same goods.
 static uint32_t stock_hash(uint32_t a, uint32_t b, uint32_t c) {
@@ -26,22 +27,42 @@ static uint32_t stock_hash(uint32_t a, uint32_t b, uint32_t c) {
     return h;
 }
 
+// A shop that offers you a second Sword is wasting one of its three slots.
+static bool already_owned(uint8_t id) {
+    for (int i = 0; i < MAX_EQUIP; i++)    if (g_run.equip[i] == id) return true;
+    for (int i = 0; i < MAX_BACKPACK; i++) if (g_run.pack[i] == id) return true;
+    return false;
+}
+
 static void build_stock(void) {
     unsigned saved = (unsigned)rand();
-    for (int i = 0; i < SHOP_STOCK; i++) {
-        srand(stock_hash(g_run.floor, s_node, (uint32_t)i));
-        s_stock[i] = item_roll_for_floor(g_run.floor);
-        s_sold[i] = false;
+    uint8_t n = 0;
+    for (int slot = 0; slot < SHOP_STOCK; slot++) {
+        srand(stock_hash(g_run.floor, s_node, (uint32_t)slot));
+        for (int tries = 0; tries < 24; tries++) {
+            uint8_t cand = item_roll_for_floor(g_run.floor);
+            if (already_owned(cand)) continue;
+            bool dup = false;
+            for (uint8_t j = 0; j < n; j++) if (s_stock[j] == cand) dup = true;
+            if (dup) continue;
+            s_stock[n] = cand;
+            s_sold[n] = false;
+            n++;
+            break;
+        }
     }
+    s_stock_n = n;
     srand(saved);   // put the general-purpose stream back where we found it
 }
 
 // --- shop ------------------------------------------------------------------
-static uint16_t shop_rows(MenuLayer *m, uint16_t s, void *c) { return SHOP_STOCK; }
+static uint16_t shop_rows(MenuLayer *m, uint16_t s, void *c) {
+    return s_stock_n ? s_stock_n : 1;   // one row to say the shelves are bare
+}
 static int16_t  shop_hh(MenuLayer *m, uint16_t s, void *c)   { return 20; }
 
 static void shop_header(GContext *ctx, const Layer *cell, uint16_t section, void *data) {
-    GRect r = layer_get_bounds(cell);
+    GRect r = ui_cell_inset(layer_get_bounds(cell));
     char b[32];
     snprintf(b, sizeof(b), "Shop - you have %dg", g_run.gold);
     ui_draw_text_c(ctx, b, ui_font_tiny(), GRect(r.origin.x + 4, r.origin.y, r.size.w - 8, 18),
@@ -49,6 +70,10 @@ static void shop_header(GContext *ctx, const Layer *cell, uint16_t section, void
 }
 
 static void shop_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *data) {
+    if (!s_stock_n) {
+        menu_cell_basic_draw(ctx, cell, "Bare shelves", "Nothing here you do not own", NULL);
+        return;
+    }
     const ItemDef *d = item_def(s_stock[idx->row]);
     char t[44], s[56], eff[24], c0[10];
     item_effect_label(s_stock[idx->row], eff, sizeof(eff));
@@ -60,6 +85,7 @@ static void shop_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *da
 }
 
 static void shop_select(MenuLayer *m, MenuIndex *idx, void *c) {
+    if (!s_stock_n || idx->row >= s_stock_n) { vibes_short_pulse(); return; }
     if (s_sold[idx->row]) { vibes_short_pulse(); return; }
     const ItemDef *d = item_def(s_stock[idx->row]);
     if (g_run.gold < d->price) { vibes_short_pulse(); return; }
@@ -101,11 +127,11 @@ void shop_window_push(uint8_t node_index) {
 }
 
 // --- anvil -----------------------------------------------------------------
-static uint16_t anvil_rows(MenuLayer *m, uint16_t s, void *c) { return MAX_EQUIP; }
+static uint16_t anvil_rows(MenuLayer *m, uint16_t s, void *c) { return run_equip_slots(); }
 static int16_t  anvil_hh(MenuLayer *m, uint16_t s, void *c)   { return 20; }
 
 static void anvil_header(GContext *ctx, const Layer *cell, uint16_t section, void *data) {
-    GRect r = layer_get_bounds(cell);
+    GRect r = ui_cell_inset(layer_get_bounds(cell));
     ui_draw_text_c(ctx, "Anvil - improve one card", ui_font_tiny(),
                    GRect(r.origin.x + 4, r.origin.y, r.size.w - 8, 18), COL_INK, GTextAlignmentCenter);
 }

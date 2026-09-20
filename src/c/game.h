@@ -16,7 +16,9 @@
 
 #define MAX_DICE        4
 #define MAX_SLOTS       2   // slots on one piece of equipment
-#define MAX_EQUIP       4   // cards in the 2x2 combat grid — never scrolls
+#define MAX_EQUIP       6   // hard ceiling; how many are UNLOCKED varies, see
+                            // run_equip_slots(). Four fit the grid without
+                            // scrolling; the last two arrive late on purpose.
 #define MAX_BACKPACK   10
 #define MAX_FOE_EQUIP   4
 #define MAX_FOE_DICE    6   // endless hands enemies extra dice with depth
@@ -51,6 +53,9 @@ typedef struct { uint8_t kind; uint8_t arg; } Cond;
 
 bool cond_accepts(Cond c, uint8_t pips);
 void cond_label(Cond c, char *out, size_t len);
+// A ~20px slot box cannot hold the word "even". Lists use the words; the box
+// uses this.
+void cond_label_short(Cond c, char *out, size_t len);
 
 // --- Equipment -------------------------------------------------------------
 typedef enum {
@@ -168,6 +173,7 @@ extern RunState g_run;
 #define WARRIOR_HP_PER_LVL   4
 
 uint8_t warrior_dice_for_level(uint8_t level);
+uint8_t run_equip_slots(void);
 uint8_t run_depth(void);            // campaign floor, or endless floor
 void    run_new(GameMode mode, uint8_t campaign_level);
 void    run_build_floor(void);

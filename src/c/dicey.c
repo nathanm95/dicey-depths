@@ -197,8 +197,12 @@ static const char HOWTO_TEXT[] =
 "Up/Down to move, Select to pick a die and Select again to drop it.\n"
 "Tap the enemy (or hold Select) to see exactly what it is carrying.\n\n"
 "CARDS\n"
-"Each card takes a die that matches its slot: any, odd, even, 4+, 3- or an "
-"exact number. Rare cards take two dice and use the total.\n"
+"Each card takes a die that matches its slot. The little box on the card says "
+"what it will accept: E for even, O for odd, 4+ for four or higher, 3- for "
+"three or lower, =6 for exactly a six. An empty box takes anything.\n"
+"Fussy cards pay better. A card that only wants a 1 hits far harder than one "
+"that takes any die - and is dead weight on the turn you do not roll one.\n"
+"Rare cards take two dice and use the total.\n"
 "A card fires ONCE per turn, so four cards and four dice means four actions - "
 "a spare die is worth nothing without a card to put it in.\n\n"
 "THE WARRIOR\n"
@@ -216,6 +220,9 @@ static const char HOWTO_TEXT[] =
 "PSN Poison - 3 HP a turn, through shields\n"
 "FRY Fury - your next card fires twice\n"
 "SIL Silence - no Limit Break\n\n"
+"LATER ON\n"
+"Deeper in, you carry six cards instead of four and the grid scrolls - swipe "
+"it, or just keep moving the cursor and it follows.\n\n"
 "THE FLOOR\n"
 "Beat two of the three enemies to open the door. The third is optional - its "
 "gold against your health.\n\n"
@@ -224,7 +231,11 @@ static const char HOWTO_TEXT[] =
 static void howto_load(Window *window) {
     Layer *root = window_get_root_layer(window);
     GRect b = layer_get_bounds(root);
-    int16_t inset = PBL_IF_ROUND_ELSE(26, 5);
+    // On the round display a fixed inset cannot work: the circle is narrow at the
+    // top and bottom of the screen and full width in the middle, so any single
+    // inset either clips the first and last lines or wastes the middle ones.
+    // text flow insets each LINE to the shape of the glass instead.
+    int16_t inset = PBL_IF_ROUND_ELSE(2, 5);
     GRect frame = GRect(inset, 0, (int16_t)(b.size.w - inset * 2), b.size.h);
 
     s_howto_scroll = scroll_layer_create(frame);
@@ -238,11 +249,20 @@ static void howto_load(Window *window) {
     text_layer_set_text_color(s_howto_text, COL_INK);
     text_layer_set_overflow_mode(s_howto_text, GTextOverflowModeWordWrap);
 
+    // The layer has to be in the hierarchy before text flow is switched on,
+    // because the API measures where it actually sits on the screen.
+    scroll_layer_add_child(s_howto_scroll, text_layer_get_layer(s_howto_text));
+    layer_add_child(root, scroll_layer_get_layer(s_howto_scroll));
+
+#if defined(PBL_ROUND)
+    text_layer_enable_screen_text_flow_and_paging(s_howto_text, 4);
+    scroll_layer_set_paging(s_howto_scroll, true);
+#endif
+
+    // Measure AFTER enabling flow — it changes where every line breaks.
     GSize sz = text_layer_get_content_size(s_howto_text);
     text_layer_set_size(s_howto_text, GSize(frame.size.w, (int16_t)(sz.h + 8)));
     scroll_layer_set_content_size(s_howto_scroll, GSize(frame.size.w, (int16_t)(sz.h + 16)));
-    scroll_layer_add_child(s_howto_scroll, text_layer_get_layer(s_howto_text));
-    layer_add_child(root, scroll_layer_get_layer(s_howto_scroll));
 }
 
 static void howto_unload(Window *window) {
@@ -266,7 +286,7 @@ static uint16_t camp_rows(MenuLayer *m, uint16_t s, void *c) { return RULE_COUNT
 static int16_t  camp_cell_h(MenuLayer *m, MenuIndex *i, void *c) { return 46; }
 
 static void camp_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *data) {
-    GRect r = layer_get_bounds(cell);
+    GRect r = ui_cell_inset(layer_get_bounds(cell));
     bool locked = idx->row >= g_prog.unlocked;
     bool done   = (g_prog.cleared >> idx->row) & 1;
     // Drawing the cell by hand means honouring the highlight ourselves —
@@ -333,7 +353,7 @@ static uint16_t title_rows(MenuLayer *m, uint16_t s, void *c) {
 static int16_t title_hh(MenuLayer *m, uint16_t s, void *c) { return 40; }
 
 static void title_header(GContext *ctx, const Layer *cell, uint16_t section, void *data) {
-    GRect r = layer_get_bounds(cell);
+    GRect r = ui_cell_inset(layer_get_bounds(cell));
     ui_draw_text_c(ctx, "DICEY DEPTHS", ui_font_title(),
                    GRect(r.origin.x + 2, r.origin.y + 2, r.size.w - 4, 30), COL_INK, GTextAlignmentCenter);
 }
@@ -421,6 +441,13 @@ int main(void) {
     // Debug entry point: skip the menus and drop straight into a fight, so the
     // combat screen can be captured in an emulator that cannot send SELECT.
     run_new(MODE_CAMPAIGN, DD_BOOT_RULE);
+#ifdef DD_BOOT_KIT
+    {
+        static const uint8_t kit[MAX_EQUIP] = {0, 1, ITEM_REROLL, 42, 47, 14};
+        uint8_t n = run_equip_slots();
+        for (uint8_t i = 0; i < n; i++) g_run.equip[i] = kit[i];
+    }
+#endif
     floor_window_push();
     combat_window_push(DD_BOOT_ENEMY);
 #endif

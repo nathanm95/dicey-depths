@@ -4,7 +4,7 @@ Progress g_prog;
 
 #define PERSIST_KEY_PROG 110
 #define PERSIST_KEY_PVER 111
-#define PROG_VERSION 1
+#define PROG_VERSION 2
 
 void progress_load(void) {
     memset(&g_prog, 0, sizeof(g_prog));

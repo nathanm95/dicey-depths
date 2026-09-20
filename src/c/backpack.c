@@ -31,13 +31,13 @@ static int pack_index_for_row(int row) {
 static uint16_t get_num_sections(MenuLayer *m, void *c) { return 2; }
 
 static uint16_t get_num_rows(MenuLayer *m, uint16_t s, void *c) {
-    return (s == 0) ? MAX_EQUIP : (uint16_t)pack_count();
+    return (s == 0) ? run_equip_slots() : (uint16_t)pack_count();
 }
 
 static int16_t get_header_height(MenuLayer *m, uint16_t s, void *c) { return 18; }
 
 static void draw_header(GContext *ctx, const Layer *cell, uint16_t section, void *data) {
-    GRect r = layer_get_bounds(cell);
+    GRect r = ui_cell_inset(layer_get_bounds(cell));
     ui_draw_text_c(ctx, section == 0 ? "In the grid (tap to remove)" : "Spare (tap to equip)",
                    ui_font_tiny(), GRect(r.origin.x + 4, r.origin.y, r.size.w - 8, 16),
                    COL_INK, GTextAlignmentLeft);
