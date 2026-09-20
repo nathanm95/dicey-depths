@@ -415,6 +415,7 @@ int main(void) {
         .load = title_load, .appear = title_appear, .unload = title_unload
     });
     window_stack_push(s_title_win, true);
+    splash_window_push();   // sits on top of the title and gets out of the way
 
 #ifdef DD_BOOT_COMBAT
     // Debug entry point: skip the menus and drop straight into a fight, so the

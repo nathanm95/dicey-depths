@@ -40,6 +40,11 @@
           "type": "bitmap",
           "name": "IMAGE_ENEMY_DRAKE",
           "file": "images/enemy_drake.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_DICEY",
+          "file": "images/dicey.png"
         }
       ]
     }

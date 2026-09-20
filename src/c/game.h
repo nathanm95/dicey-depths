@@ -216,6 +216,7 @@ void anvil_window_push(uint8_t node_index);
 void scores_window_push(void);
 void howto_window_push(void);
 void gameover_window_push(bool won);
+void splash_window_push(void);
 
 typedef enum { BATTLE_NONE = 0, BATTLE_WON, BATTLE_LOST } BattleResult;
 extern BattleResult g_last_battle;

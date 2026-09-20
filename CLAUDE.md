@@ -32,6 +32,7 @@ the layout assumes a large colour screen and the input model assumes a touchscre
 ```
 src/c/
   dicey.c       main(), title menu, campaign select, best runs, how-to, results screen
+  splash.c      the launch splash — Dicey drops in, title lands, then it leaves
   game.h        every shared type and constant
   combat.c      THE GAME: dice, the 2x2 card grid, statuses, enemy AI, touch, animation
   floor.c       the floor map (MenuLayer of nodes)
@@ -48,6 +49,9 @@ src/c/
 docs/
   DESIGN-BREAKDOWN.pdf   the source design analysis this was built from
   reference/             screenshots of the original for art direction
+  art/pebble64.png       the 64 colours the hardware can show
+store/                   listing assets — NOT watch resources, see store/README.md
+tools/                   make_palette.py, verify_art.py
 ```
 
 ## Conventions specific to this project
@@ -160,7 +164,26 @@ That produced 6-17 colours per sprite, binary alpha, under 1KB each — four ene
 cost 1.9KB of the 256KB resource budget, so the full roster is nothing.
 
 **Always run `python3 tools/verify_art.py` before committing a sprite.** It fails on
-off-palette colours, partial alpha and oversized images.
+off-palette colours, partial alpha and oversized images. Its size limit is role-aware:
+`enemy_*.png` must fit a 64px portrait box, anything else must fit the smaller display
+(200x228), because a bitmap cannot be scaled down to fit at runtime.
+
+### The splash, and why it is short
+
+`splash.c` drops Dicey in on an `ease_out_bounce`, slides the title up under him, and
+leaves after 2.3s. **Any button or any tap skips it immediately.** A splash on a watch
+is a tax charged on every single launch, so it must never be the thing standing between
+someone and a game they opened on purpose. Keep it skippable and keep it brief.
+
+### Store listing assets are a different problem
+
+`store/` holds what `pebble publish` asks for: `iconLarge` 144x144 and `iconSmall` 80x80.
+Those sizes come from the tool's own prompts in `pebble_tool/commands/publish.py`, not
+from documentation. The publisher captures its own screenshots per platform.
+
+Store icons are deliberately **not** palette-restricted — they are shown on the web and
+on a phone, never on the watch, so forcing them into 64 colours would throw away quality
+for nothing. This is why `tools/verify_art.py` only looks in `resources/images/`.
 
 Resources are declared `"type": "bitmap"` in `package.json`, and drawing needs
 `graphics_context_set_compositing_mode(ctx, GCompOpSet)` or the transparency is lost.
