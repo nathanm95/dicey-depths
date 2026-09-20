@@ -311,13 +311,17 @@ Resources are declared `"type": "bitmap"` in `package.json`, and drawing needs
 Only the enemy currently on screen is held in memory (`s_foe_bmp`, created in
 `combat_window_push`, destroyed in `window_unload`), so sprite count does not grow the heap.
 
-### Never rotate a bitmap every frame
+### Never rotate a bitmap. At all.
 
 `graphics_draw_rotated_bitmap` carries an SDK warning about "performance limitations"
-and it means it. Using it for a 48x48 idle sway at 30fps **pegged the emulator at
-100% CPU**; swapping to a plain `graphics_draw_bitmap_in_rect` at a bobbing y brought
-it to 65%, which is *below* the procedural portrait's 68%. Rotation is now spent only
-on the death tumble, where it plays once and a dropped frame costs nothing.
+and it means it. A 48x48 idle sway at 30fps **pegged the emulator at 100% CPU**.
+
+It was then kept for the death animation on the reasoning that it plays once and a dropped
+frame costs nothing. **That reasoning was wrong and it shipped a crash.** An app that cannot
+keep up does not merely drop frames — the firmware kills it, and the watch drops back to the
+launcher. Every enemy killed took the app down with it, which looked exactly like a crash
+because it was one. There are now **no calls to it anywhere**; the death animation is a plain
+blit sliding downward, which costs nothing and reads just as well.
 
 A bitmap also cannot be **scaled** — `graphics_draw_bitmap_in_rect` tiles rather than
 scales. So a sprite enemy bobs where a procedural one squashes and stretches. If you

@@ -916,27 +916,33 @@ static void draw_foe(GContext *ctx, const Layout *L) {
         pr = GRect(0, 0, 0, 0);
     }
     if (s_foe_bmp) {
-        // A bitmap cannot be squashed on this hardware: draw_bitmap_in_rect tiles
-        // rather than scales, and rotation is the only transform on offer. It is
-        // also far too slow to run every frame — rotating a 48x48 sprite at 30fps
-        // pegged the CPU at 100%, exactly the "performance limitations" the SDK
-        // warns about. So a sprite enemy BOBS while it idles, which is a plain
-        // blit, and rotation is spent only on the death tumble, where it plays
-        // once and a dropped frame costs nothing.
+        // A bitmap cannot be squashed on this hardware — draw_bitmap_in_rect tiles
+        // rather than scales — so a sprite enemy bobs where a drawn one squashes.
+        //
+        // graphics_draw_rotated_bitmap is NEVER used here, not even for the death
+        // animation. It pegged the CPU at 100% on a 48x48 sprite, and an app that
+        // cannot keep up does not merely drop frames: the firmware kills it, and
+        // the watch drops back to the launcher. That looks exactly like a crash
+        // and was one, for every enemy killed. The death is a plain blit sliding
+        // down and away instead, which costs nothing and reads just as well.
         GSize bs = gbitmap_get_bounds(s_foe_bmp).size;
         GPoint centre = GPoint((int16_t)(pr.origin.x + pr.size.w / 2),
                                (int16_t)(pr.origin.y + pr.size.h / 2));
-        graphics_context_set_compositing_mode(ctx, GCompOpSet);
+        int16_t drop = 0;
+        bool gone = false;
         if (tw_running(&s_death)) {
-            int32_t p = tw_p(&s_death);
-            graphics_draw_rotated_bitmap(ctx, s_foe_bmp, GPoint(bs.w / 2, bs.h / 2),
-                                         DEG_TO_TRIGANGLE(10 + (80 * p) / 1000),
-                                         GPoint(centre.x, (int16_t)(centre.y + (p * 14) / 1000)));
-        } else {
-            graphics_draw_bitmap_in_rect(ctx, s_foe_bmp,
-                GRect((int16_t)(centre.x - bs.w / 2), (int16_t)(centre.y - bs.h / 2), bs.w, bs.h));
+            int32_t p = ease_in_quad(tw_p(&s_death));
+            drop = (int16_t)((p * 46) / 1000);
+        } else if (s_phase == PHASE_OVER && s_foe.hp <= 0) {
+            gone = true;
         }
-        graphics_context_set_compositing_mode(ctx, GCompOpAssign);
+        if (!gone) {
+            graphics_context_set_compositing_mode(ctx, GCompOpSet);
+            graphics_draw_bitmap_in_rect(ctx, s_foe_bmp,
+                GRect((int16_t)(centre.x - bs.w / 2),
+                      (int16_t)(centre.y - bs.h / 2 + drop), bs.w, bs.h));
+            graphics_context_set_compositing_mode(ctx, GCompOpAssign);
+        }
     } else {
         portrait_draw(ctx, ed->shape, pr, tw_running(&s_foe_hit) && (tw_p(&s_foe_hit) < 300));
     }
