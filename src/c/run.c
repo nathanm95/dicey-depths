@@ -6,7 +6,7 @@ BattleResult g_last_battle = BATTLE_NONE;
 #define PERSIST_KEY_RUN 100
 #define PERSIST_KEY_DIFF 121
 #define PERSIST_KEY_VER 101
-#define PERSIST_VERSION 6
+#define PERSIST_VERSION 7
 
 uint8_t warrior_dice_for_level(uint8_t level) {
     return class_dice_for_level(CLASS_WARRIOR, level);
@@ -21,9 +21,24 @@ uint8_t run_depth(void) { return g_run.floor; }
 // simulator even with a thin loadout, which is not a difficulty, it is a
 // cutscene. These numbers keep Easy very forgiving while leaving the final boss
 // able to beat a player who never improved their kit.
-static const int16_t s_enemy_hp_pct[DIFF_COUNT]  = { 100, 85 };
-static const int16_t s_incoming_pct[DIFF_COUNT]  = { 100, 80 };
-static const int16_t s_hero_hp_pct[DIFF_COUNT]   = { 100, 115 };
+static const int16_t s_enemy_hp_pct[DIFF_COUNT]  = { 100, 85, 125 };
+static const int16_t s_incoming_pct[DIFF_COUNT]  = { 100, 80, 125 };
+static const int16_t s_hero_hp_pct[DIFF_COUNT]   = { 100, 115, 90 };
+
+static const char *s_curse_name[CURSE_COUNT] = {
+    "", "Fever", "Toxic Air", "Crowded", "Brittle", "Lean Pickings", "Static"
+};
+static const char *s_curse_blurb[CURSE_COUNT] = {
+    "",
+    "Every fight starts with a die alight",
+    "Every fight starts you poisoned",
+    "Everything here rolls one more die",
+    "Shields are worth half",
+    "Apples heal half",
+    "Every fight starts with a card shocked"
+};
+const char *curse_name(uint8_t c)  { return (c < CURSE_COUNT) ? s_curse_name[c]  : ""; }
+const char *curse_blurb(uint8_t c) { return (c < CURSE_COUNT) ? s_curse_blurb[c] : ""; }
 
 uint8_t difficulty_get(void) {
     if (!persist_exists(PERSIST_KEY_DIFF)) return DIFF_NORMAL;
@@ -37,12 +52,15 @@ void difficulty_set(uint8_t d) {
 }
 
 const char *difficulty_name(uint8_t d) {
-    return (d == DIFF_EASY) ? "Easy" : "Normal";
+    if (d == DIFF_EASY) return "Easy";
+    if (d == DIFF_HARD) return "Hard";
+    return "Normal";
 }
 
 const char *difficulty_blurb(uint8_t d) {
-    return (d == DIFF_EASY) ? "Softer numbers, same rules"
-                            : "The game as intended";
+    if (d == DIFF_EASY) return "Softer numbers, same rules";
+    if (d == DIFF_HARD) return "Harder, and a curse on every floor";
+    return "The game as intended";
 }
 
 static uint8_t run_diff(void) {
@@ -83,6 +101,7 @@ int16_t run_enemy_hp(uint8_t enemy_id) {
 uint8_t run_enemy_dice(uint8_t enemy_id) {
     uint8_t d = enemy_def(enemy_id)->dice;
     if (g_run.rule == RULE_SWARM || g_run.rule == RULE_BACKSTAGE) d++;
+    if (g_run.curse == CURSE_CROWDED) d++;
     if (g_run.mode == MODE_ENDLESS) d = (uint8_t)(d + g_run.floor / 4);
     if (d > MAX_FOE_DICE) d = MAX_FOE_DICE;
     return d;
@@ -105,6 +124,16 @@ void run_set_upgraded(bool equipped, int index) {
 // enemies opens the door. That is the whole floor puzzle: is the third fight
 // worth the health it will cost you for the gold it pays?
 void run_build_floor(void) {
+    // One curse per floor on Hard, and never the same one twice running.
+    if (g_run.difficulty == DIFF_HARD) {
+        uint8_t next = g_run.curse;
+        for (int tries = 0; tries < 8 && next == g_run.curse; tries++) {
+            next = (uint8_t)(1 + rand() % (CURSE_COUNT - 1));
+        }
+        g_run.curse = next;
+    } else {
+        g_run.curse = CURSE_NONE;
+    }
     memset(g_run.nodes, 0, sizeof(g_run.nodes));
     g_run.node_count  = 0;
     g_run.foes_cleared = 0;

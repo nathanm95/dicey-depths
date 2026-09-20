@@ -12,6 +12,9 @@ typedef enum {
     ACH_FULL_GRID,      // carry six cards at once
     ACH_DEPTH_10,       // endless floor 10
     ACH_UNTOUCHED,      // win a fight without losing a single point of health
+    ACH_HARD_EPISODE,   // clear an episode on Hard
+    ACH_SWEEP_NORMAL,   // all five on Normal
+    ACH_SWEEP_HARD,     // all five on Hard
     ACH_COUNT
 } AchId;
 

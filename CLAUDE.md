@@ -314,9 +314,19 @@ middle of one. Keep that flag if you touch combat's entry or exit.
 
 ## Difficulty, and how it is tuned
 
-Normal and Easy, toggled on the title screen and persisted. Easy scales three numbers and
-changes **no rules** — enemy health 85%, damage reaching the hero 80%, hero maximum health
-115%. A run captures the setting at `run_new`, so changing it later cannot rewrite a run in
+Normal, Easy and Hard, cycled on the title screen and persisted. Easy and Normal scale three
+numbers and change no rules — Easy is enemy health 85%, damage reaching the hero 80%, hero
+maximum health 115%; Hard is 125% / 125% / 90%.
+
+**Hard also puts a curse on every floor** (`CurseId`, chosen in `run_build_floor`, never the
+same one twice running): Fever, Toxic Air, Crowded, Brittle, Lean Pickings, Static. The floor
+header names the one in force and combat announces it before the first roll, so it shapes a
+fight rather than ambushing it. That is the original's trick — let a ruleset carry the
+variety — applied a floor at a time.
+
+Episode clears are recorded **per difficulty** (`Progress.cleared[DIFF_COUNT]`), the campaign
+list marks them N/E/H, and three achievements hang off it, so a finished campaign still has
+somewhere to go. A run captures the setting at `run_new`, so changing it later cannot rewrite a run in
 progress.
 
 `tools/simulate.py` plays thousands of runs and reports win rates. It parses the **real**
@@ -329,7 +339,21 @@ Validate it before trusting it. Point it at a single fight whose outcome you kno
 with the starting kit beats a Rat 100% of the time and a Slime ~95%, which matches play. If
 those move, the model has drifted, not the game.
 
-What it currently says, and has not yet been acted on:
+Two things it found that WERE acted on:
+
+- **The Robot's press-your-luck had no luck in it.** With steps of 1-3 and a bust above 6 you
+  can always reach 4, 5 or 6 in two pushes without ever busting, so the safe play was also
+  the optimal play: measured at a 4.73 average with a **0% bust rate**, against a plain die's
+  3.50 for no risk at all. `CPU_STEP_MAX` is 4 now, which puts a real gamble back in the
+  second push, and the Robot's base health came down to the Warrior's so the class difference
+  is the CPU rather than a bigger bar as well.
+- **The Elimination Round was a spiral, not a rule.** It strips a card after every fight and
+  the only guard was "never below one", so a four-slot loadout was down to one card by floor
+  two and the run was decided long before the boss. The floor is three now: 6% to 22% on
+  Normal, 27% to 49% on Easy.
+
+What it currently says, and has NOT been acted on, because which way to move it is a design
+decision rather than a bug:
 
 - The starting kit **cannot** beat any floor-3 boss — 0%. That is intended: you are meant to
   improve your loadout. But the curve past it is a cliff rather than a slope. Against The
@@ -338,6 +362,15 @@ What it currently says, and has not yet been acted on:
   (73% / 100%), so the five bosses are not on one curve.
 - Mid-tier regular enemies are harsh for a starting kit: Vacuum 4% and Knight 0% at two dice,
   because Siphon heals what it takes and Hide shields every turn.
+- The campaign curve is not monotonic. On Normal: 44% / 91% / 49% / 22% / 4%. Curse of Greed
+  is the second episode and by far the easiest, because its upgraded opening kit outweighs
+  its curse; Sudden Death at 4% is the steepest thing in the game.
+- Endless still favours the Robot heavily (median 19 floors against the Warrior's 3 on
+  Normal), and Warrior on Hard dies on the first floor more often than not.
+
+**Validate the simulator before believing a number from it.** Its win rates moved from
+"everything is unwinnable" to plausible once it learned to swap better cards in from the
+backpack — a policy gap, not a game problem. A four-card starting kit scoring 0% was the tell.
 
 ## Checking the tables
 

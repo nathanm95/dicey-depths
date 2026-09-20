@@ -425,7 +425,15 @@ static void camp_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *da
     GRect r = ui_cell_inset(layer_get_bounds(cell));
     // Bonus Rounds only appear once they are earned, so a visible one is open.
     bool locked = !rule_is_bonus((uint8_t)idx->row) && (idx->row >= g_prog.unlocked);
-    bool done   = (g_prog.cleared >> idx->row) & 1;
+    // Which difficulties this episode has been cleared on, so a finished
+    // campaign still has somewhere to go.
+    char marks[8] = "";
+    const char letter[DIFF_COUNT] = { 'N', 'E', 'H' };
+    size_t mn = 0;
+    for (int d = 0; d < DIFF_COUNT && mn < sizeof(marks) - 1; d++) {
+        if ((g_prog.cleared[d] >> idx->row) & 1) marks[mn++] = letter[d];
+    }
+    marks[mn] = '\0';
     // Drawing the cell by hand means honouring the highlight ourselves —
     // otherwise the selected row is dark text on a dark fill.
     bool hi = menu_cell_layer_is_highlighted(cell);
@@ -433,7 +441,8 @@ static void camp_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *da
     GColor blurb_col = hi ? GColorWhite : (locked ? GColorDarkGray : COL_FRAME);
 
     char t[48];
-    snprintf(t, sizeof(t), "%d. %s%s", idx->row + 1, rule_name((RuleId)idx->row), done ? "  *" : "");
+    snprintf(t, sizeof(t), "%d. %s%s%s", idx->row + 1, rule_name((RuleId)idx->row),
+             mn ? "  " : "", marks);
     ui_draw_text_c(ctx, t, ui_font_small(),
                    GRect(r.origin.x + 4, r.origin.y + 1, r.size.w - 8, 18),
                    title_col, GTextAlignmentLeft);

@@ -92,7 +92,9 @@ def parse_loot():
 ITEMS, ENEMIES, LOOT = parse_items(), parse_enemies(), parse_loot()
 BOSS_FIRST = int(re.search(r"#define BOSS_FIRST (\d+)", src("enemies.c")).group(1))
 ITEM_REROLL = int(re.search(r"#define ITEM_REROLL\s+(\d+)", src("game.h")).group(1))
-DIFF = {"Normal": dict(ehp=100, inc=100, hhp=100), "Easy": dict(ehp=85, inc=80, hhp=115)}
+DIFF = {"Normal": dict(ehp=100, inc=100, hhp=100),
+        "Easy": dict(ehp=85, inc=80, hhp=115),
+        "Hard": dict(ehp=125, inc=125, hhp=90)}
 
 def accepts(c, pips):
     k,a = c
@@ -169,7 +171,7 @@ def take_turn(me, foe, robot, inc_pct, rule=0):
         for _ in range(me.dice_n):
             cpu=0
             while True:
-                cpu+=random.randint(1,3)
+                cpu+=random.randint(1,4)
                 if cpu>6: cpu=0; break
                 if cpu>=4: break
             if cpu: dice.append(cpu)
@@ -257,6 +259,38 @@ def fight(hero_cards, hero_hp, hero_max, dice, enemy, diff, robot, elite, rule=0
     return False, hero.hp, hero.charge, hero.limit   # stalemate counts as a loss
 
 # ---------------------------------------------------------------- run
+# Probability a random die satisfies a slot, used to value fussy cards honestly.
+def _p_accept(c):
+    k,a = c
+    return [1.0, 0.5, 0.5, 1/6.0, (7-a)/6.0, a/6.0][k]
+
+def card_value(idx):
+    """Rough worth of a card at an average roll, discounted by how often its
+    slot will actually accept a die. Used to choose what to carry."""
+    it = ITEMS[idx]
+    ev = 0.0
+    for n,(k,mult,add,stat) in enumerate(it["eff"]):
+        if k==0: continue
+        if n==1: ev += 2.0 * _p_accept(it["bonus"]); continue
+        v = 3.5*mult + add
+        if   k==EFF["EFF_DAMAGE"]: ev += v
+        elif k==EFF["EFF_DRAIN"]:  ev += v*1.5
+        elif k==EFF["EFF_SHIELD"]: ev += v*0.75
+        elif k==EFF["EFF_HEAL"]:   ev += v*0.5
+        elif k==EFF["EFF_REROLL"]: ev += 3.0
+        else: ev += 3.0
+    p = _p_accept(it["cond"][0])
+    if it["slots"] > 1: p *= _p_accept(it["cond"][1]) * 0.6   # costs two dice
+    if it["uses"]: ev *= 0.7
+    return ev * p
+
+def best_loadout(pool, slots):
+    """What a player would actually carry. The backpack exists precisely so a
+    better card can be swapped in; a policy that never swaps understates the
+    player badly - it was the reason a four-card starting kit scored 0%."""
+    ranked = sorted(set(pool), key=card_value, reverse=True)
+    return ranked[:slots]
+
 def loot_for(depth):
     t = LOOT["s_early"] if depth<=1 else (LOOT["s_mid"] if depth==2 else LOOT["s_late"])
     return random.choice(t)
@@ -265,17 +299,18 @@ def play_run(klass, level, diff):
     """level is 1..5 and maps to campaign_level 0..4 in the C source."""
     rule = level - 1                      # 0 plain, 1 greed, 2 parallel, 3 elim, 4 sudden
     robot = (klass=="Robot")
-    base = 24 if not robot else 28
+    base = 24
     max_hp = base*DIFF[diff]["hhp"]//100
     if rule == 4: max_hp = max_hp//2                       # Sudden Death
     hp = max_hp
     sig = ITEM_REROLL if not robot else 7
-    ids = [0, 1, sig]
+    ids = [0, 1, sig, 5]
     upg = set()
     if rule == 1:                                          # Curse of Greed
         ids = [2, 8, sig, 1]; upg = {0, 1}
     slots = 6 if rule >= 3 else 4                          # Elimination onward
     gold = 0
+    pool = list(ids)                                       # everything owned
     for floor in (1,2,3):
         dice = 2 if floor==1 else (3 if floor==2 else 4)
         if floor==3:
@@ -284,23 +319,67 @@ def play_run(klass, level, diff):
             won,hp,_,_ = fight(mkcards(ids,upg), hp, max_hp, dice, boss,
                                diff, robot, False, rule)
             return won
-        pool=[e for e in ENEMIES if not e["boss"] and e["dmin"]<=floor<=e["dmax"]]
-        picks=sorted(random.sample(pool,min(3,len(pool))), key=lambda e:e["hp"])[:2]
+        foes=[e for e in ENEMIES if not e["boss"] and e["dmin"]<=floor<=e["dmax"]]
+        picks=sorted(random.sample(foes,min(3,len(foes))), key=lambda e:e["hp"])[:2]
         for i,e in enumerate(picks):
             elite = (floor>=2 and i==1 and random.random()<0.6)
             won,hp,_,_ = fight(mkcards(ids,upg), hp, max_hp, dice, e,
                                diff, robot, elite, rule)
             if not won: return False
             gold += e["gold"]*(2 if elite else 1)*(2 if rule==4 else 1)
-            if rule == 3 and len(ids) > 1:                 # Elimination Round
-                drop = random.randrange(len(ids))
-                ids.pop(drop); upg = {u for u in upg if u != drop}
+            if rule == 3 and len(pool) > 3:                # Elimination Round
+                drop = random.choice(ids) if ids else pool[0]
+                if drop in pool: pool.remove(drop)
+                ids = best_loadout(pool, slots)
         hp = min(max_hp, hp+8)
-        if len(ids)<slots: ids.append(loot_for(floor))
-        if gold>=14 and len(ids)<slots: ids.append(loot_for(floor)); gold-=14
-        if floor>=2 and ids: upg.add(0)
+        pool.append(loot_for(floor))                       # chest
+        if gold>=14: pool.append(loot_for(floor)); gold-=14  # shop
+        ids = best_loadout(pool, slots)
+        if floor>=2 and ids: upg.add(0)                    # anvil
         max_hp += 4; hp = max_hp
     return False
+
+def play_endless(klass, diff, cap=40):
+    """How deep does an endless run get? Returns floors cleared."""
+    robot = (klass=="Robot")
+    max_hp = 24*DIFF[diff]["hhp"]//100
+    hp = max_hp
+    ids = [0,1,ITEM_REROLL if not robot else 7, 5]
+    pool = list(ids)
+    upg=set(); gold=0
+    for floor in range(1, cap+1):
+        dice = min(4, 1+floor) if floor<4 else 4
+        slots = 6 if floor>=5 else 4
+        foes=[e for e in ENEMIES if not e["boss"] and e["dmin"]<=min(floor,6)<=e["dmax"]]
+        if not foes: break
+        picks=sorted(random.sample(foes,min(3,len(foes))), key=lambda e:e["hp"])[:2]
+        for i,e in enumerate(picks):
+            scaled = dict(e); scaled["hp"] = e["hp"]*(100+12*floor)//100
+            scaled["dice"] = e["dice"] + floor//4
+            elite = (floor>=2 and i==1 and random.random()<0.6)
+            won,hp,_,_ = fight(mkcards(ids,upg), hp, max_hp, dice, scaled,
+                               diff, robot, elite, 0)
+            if not won: return floor-1
+            gold += e["gold"]
+        hp = min(max_hp, hp+8)
+        pool.append(loot_for(min(floor,3)))
+        if gold>=14: pool.append(loot_for(min(floor,3))); gold-=14
+        ids = best_loadout(pool, slots)
+        if ids: upg.add(0)
+        max_hp += 4; hp = max_hp
+    return cap
+
+if len(sys.argv)>1 and sys.argv[1]=="endless":
+    n=int(sys.argv[2]) if len(sys.argv)>2 else 400
+    print("endless: floors cleared before dying")
+    print("%-10s %-8s %-8s %-8s %-8s" % ("class/diff","median","mean","best","p90"))
+    print("-"*46)
+    for klass in ("Warrior","Robot"):
+        for diff in ("Easy","Normal","Hard"):
+            r=sorted(play_endless(klass,diff) for _ in range(n))
+            med=r[len(r)//2]; mean=sum(r)/len(r); p90=r[int(len(r)*0.9)]
+            print("%-10s %-8s %-8.1f %-8s %-8s" % (klass[:4]+"/"+diff[:4], med, mean, r[-1], p90))
+    sys.exit(0)
 
 N = int(sys.argv[1]) if len(sys.argv)>1 else 2000
 print("%-22s %-8s %-8s" % ("campaign level", "Normal", "Easy"))

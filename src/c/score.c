@@ -1,10 +1,11 @@
 #include "game.h"
+#include "achieve.h"
 
 Progress g_prog;
 
 #define PERSIST_KEY_PROG 110
 #define PERSIST_KEY_PVER 111
-#define PROG_VERSION 3
+#define PROG_VERSION 4
 
 void progress_load(void) {
     memset(&g_prog, 0, sizeof(g_prog));
@@ -26,7 +27,14 @@ void progress_save(void) {
 }
 
 void progress_mark_cleared(uint8_t campaign_level) {
-    g_prog.cleared |= (uint8_t)(1 << campaign_level);
+    // Recorded per difficulty, so the campaign is worth playing again on a
+    // harder setting rather than just being ticked off once.
+    uint8_t d = (g_run.difficulty < DIFF_COUNT) ? g_run.difficulty : DIFF_NORMAL;
+    g_prog.cleared[d] |= (uint8_t)(1 << campaign_level);
+    if (d == DIFF_HARD) ach_unlock(ACH_HARD_EPISODE);
+    uint8_t all = (uint8_t)((1 << RULE_CAMPAIGN_COUNT) - 1);
+    if ((g_prog.cleared[DIFF_NORMAL] & all) == all) ach_unlock(ACH_SWEEP_NORMAL);
+    if ((g_prog.cleared[DIFF_HARD]   & all) == all) ach_unlock(ACH_SWEEP_HARD);
     if (campaign_level + 1 >= g_prog.unlocked && g_prog.unlocked < RULE_CAMPAIGN_COUNT) {
         g_prog.unlocked = (uint8_t)(campaign_level + 2);
         if (g_prog.unlocked > RULE_CAMPAIGN_COUNT) g_prog.unlocked = RULE_CAMPAIGN_COUNT;

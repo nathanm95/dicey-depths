@@ -64,7 +64,8 @@ static void node_line(const Node *n, char *title, size_t tl, char *sub, size_t s
         }
         case NODE_APPLE:
             snprintf(title, tl, "Apple");
-            snprintf(sub, sl, n->used ? "Eaten" : "Heal %d HP", n->arg);
+            snprintf(sub, sl, n->used ? "Eaten" : "Heal %d HP",
+                     (g_run.curse == CURSE_LEAN) ? (n->arg / 2) : n->arg);
             break;
         case NODE_CHEST:
             snprintf(title, tl, "Chest");
@@ -108,7 +109,10 @@ static void draw_header(GContext *ctx, const Layer *cell, uint16_t section, void
     char a[40], b[40];
     if (g_run.mode == MODE_ENDLESS) snprintf(a, sizeof(a), "Endless - Floor %d", g_run.floor);
     else snprintf(a, sizeof(a), "Floor %d/%d - %s", g_run.floor, FLOOR_COUNT, rule_name((RuleId)g_run.rule));
-    snprintf(b, sizeof(b), "HP %d/%d   %dg   Lv%d", g_run.hp, g_run.max_hp, g_run.gold, g_run.level);
+    snprintf(b, sizeof(b), "HP %d/%d  %dg  Lv%d", g_run.hp, g_run.max_hp, g_run.gold, g_run.level);
+    if (g_run.curse != CURSE_NONE) {
+        snprintf(a, sizeof(a), "%s - %s", rule_name((RuleId)g_run.rule), curse_name(g_run.curse));
+    }
     ui_draw_text_c(ctx, a, ui_font_tiny(), GRect(r.origin.x + 4, r.origin.y, r.size.w - 8, 16),
                    COL_INK, GTextAlignmentCenter);
     ui_draw_text_c(ctx, b, ui_font_tiny(), GRect(r.origin.x + 4, r.origin.y + 16, r.size.w - 8, 16),
@@ -153,7 +157,7 @@ static void select_row(MenuLayer *m, MenuIndex *idx, void *c) {
             break;
         case NODE_APPLE:
             if (n->used) { vibes_short_pulse(); return; }
-            g_run.hp += n->arg;
+            g_run.hp += (g_run.curse == CURSE_LEAN) ? (n->arg / 2) : n->arg;
             if (g_run.hp > g_run.max_hp) g_run.hp = g_run.max_hp;
             n->used = true;
             save_run();
@@ -195,7 +199,10 @@ static void select_row(MenuLayer *m, MenuIndex *idx, void *c) {
 static void elimination_toll(void) {
     int owned[MAX_EQUIP], n = 0;
     for (int i = 0; i < MAX_EQUIP; i++) if (g_run.equip[i] != ITEM_NONE) owned[n++] = i;
-    if (n <= 1) return;     // never strip you down to nothing
+    // Never below three. Losing a card after every fight is the rule; being
+    // stripped to a single card by floor two is a death spiral, and the run is
+    // decided long before you reach the boss.
+    if (n <= 3) return;
     int pick = owned[rand() % n];
     g_run.equip[pick] = ITEM_NONE;
     g_run.equip_up &= (uint8_t)~(1 << pick);

@@ -19,7 +19,8 @@ static const ClassDef s_classes[CLASS_COUNT] = {
     [CLASS_ROBOT] = {
         "Robot",
         "No dice. Build each number, or bust trying.",
-        28,
+        24,      // same as the Warrior: the class difference is the CPU, not a
+                 // bigger health bar on top of it
         {0, 1, 7}, 3                  // Sword, Shield, Buckler
     },
 };

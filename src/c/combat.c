@@ -289,7 +289,10 @@ static void apply_effects(const ItemDef *d, int16_t value, int16_t raw,
         int16_t v = (int16_t)(value * ef->mult + ef->add);
         switch (ef->kind) {
             case EFF_DAMAGE: deal_damage(other, v, false, !by_hero); break;
-            case EFF_SHIELD: self->shield += v; break;
+            case EFF_SHIELD:
+                self->shield += (by_hero && g_run.curse == CURSE_BRITTLE)
+                                ? ((v + 1) / 2) : v;
+                break;
             case EFF_HEAL:
                 if (v < 0) deal_damage(self, (int16_t)-v, true, by_hero);
                 else       heal_up(self, v, by_hero);
@@ -1653,6 +1656,17 @@ void combat_window_push(uint8_t enemy_id, bool elite) {
     });
     window_stack_push(s_window, true);
 
+    // Hard's floor curse lands before the first roll, so it shapes the fight
+    // rather than arriving as a surprise halfway through it.
+    switch (g_run.curse) {
+        case CURSE_FEVER:  s_hero.status[ST_BURN]++;   break;
+        case CURSE_TOXIC:  s_hero.status[ST_POISON]++; break;
+        case CURSE_STATIC: s_hero.status[ST_SHOCK]++;  break;
+        default: break;
+    }
+
     begin_player_turn();
-    toast("%s blocks your way", ed->name);
+    if (g_run.curse != CURSE_NONE) toast("%s: %s", curse_name(g_run.curse),
+                                         curse_blurb(g_run.curse));
+    else toast("%s blocks your way", ed->name);
 }

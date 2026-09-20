@@ -38,5 +38,9 @@ bool rule_is_bonus(uint8_t r) { return r >= RULE_CAMPAIGN_COUNT && r < RULE_COUN
 // The Bonus Rounds are the campaign's encore: they only appear once every one
 // of the five episodes has actually been beaten.
 bool bonus_rounds_unlocked(void) {
-    return (g_prog.cleared & 0x1F) == 0x1F;
+    // Clearing an episode on any difficulty counts towards the encore.
+    uint8_t any = 0;
+    for (int d = 0; d < DIFF_COUNT; d++) any |= g_prog.cleared[d];
+    uint8_t all = (uint8_t)((1 << RULE_CAMPAIGN_COUNT) - 1);
+    return (any & all) == all;
 }

@@ -145,8 +145,13 @@ const ClassDef *class_def(uint8_t id);
 uint8_t class_dice_for_level(uint8_t klass, uint8_t level);
 
 // The Robot's CPU: PUSH adds this much, and going past CPU_BUST loses the lot.
+// The step range matters more than it looks. At 1-3 the Robot can always reach
+// 4, 5 or 6 in two pushes WITHOUT ever busting, so the safe play is also the
+// best play and the press-your-luck has no luck in it — measured at a 4.73
+// average with a 0% bust rate, against a plain die's 3.50 for nothing. At 1-4
+// the second push is a real gamble again.
 #define CPU_STEP_MIN 1
-#define CPU_STEP_MAX 3
+#define CPU_STEP_MAX 4
 #define CPU_BUST     6
 
 // --- Rulesets --------------------------------------------------------------
@@ -185,7 +190,24 @@ typedef enum { MODE_CAMPAIGN = 0, MODE_ENDLESS } GameMode;
 
 // Difficulty is a setting, but a run captures it at the start so that changing
 // it later cannot retroactively rewrite a run in progress.
-typedef enum { DIFF_NORMAL = 0, DIFF_EASY, DIFF_COUNT } Difficulty;
+typedef enum { DIFF_NORMAL = 0, DIFF_EASY, DIFF_HARD, DIFF_COUNT } Difficulty;
+
+// Hard puts a rule on each floor as well as moving the numbers — the original's
+// trick of letting a ruleset carry the variety, applied a floor at a time. The
+// floor screen names the one in force, so it is never a hidden tax.
+typedef enum {
+    CURSE_NONE = 0,
+    CURSE_FEVER,     // every fight starts with a die alight
+    CURSE_TOXIC,     // every fight starts you poisoned
+    CURSE_CROWDED,   // everything you meet rolls one more die
+    CURSE_BRITTLE,   // shields are worth half
+    CURSE_LEAN,      // apples heal half
+    CURSE_STATIC,    // every fight starts with a card shocked
+    CURSE_COUNT
+} CurseId;
+
+const char *curse_name(uint8_t c);
+const char *curse_blurb(uint8_t c);
 
 uint8_t     difficulty_get(void);            // the current setting
 void        difficulty_set(uint8_t d);       // persisted
@@ -210,6 +232,7 @@ typedef struct {
     bool     in_fight;      // a battle is open; see floor.c's resume handling
     uint8_t  fight_node;    // which node that battle belongs to
     uint8_t  difficulty;    // fixed for the whole run at run_new
+    uint8_t  curse;         // CurseId in force on this floor (Hard only)
 
     uint8_t  equip[MAX_EQUIP];
     uint8_t  equip_up;      // bitmask: which equipped cards the anvil improved
@@ -259,7 +282,7 @@ typedef struct {
 
 typedef struct {
     uint8_t     unlocked;               // campaign levels available
-    uint8_t     cleared;                // bitmask of levels beaten
+    uint8_t     cleared[DIFF_COUNT];    // levels beaten, per difficulty
     uint8_t     score_count;
     uint16_t    achieved;               // bitmask, see achieve.h
     ScoreEntry  scores[SCORE_SLOTS];

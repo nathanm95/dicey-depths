@@ -4,7 +4,8 @@
 
 static const char *s_names[ACH_COUNT] = {
     "First Blood", "Episode Cleared", "Giant Killer", "Lucky Six",
-    "Pushed It", "Fully Loaded", "Ten Deep", "Untouched"
+    "Pushed It", "Fully Loaded", "Ten Deep", "Untouched",
+    "Iron Stomach", "Champion", "Undisputed"
 };
 static const char *s_blurbs[ACH_COUNT] = {
     "Win your first fight",
@@ -14,7 +15,10 @@ static const char *s_blurbs[ACH_COUNT] = {
     "Push the CPU once too often",
     "Carry six cards at once",
     "Reach floor 10 in endless",
-    "Win a fight without losing any health"
+    "Win a fight without losing any health",
+    "Clear an episode on Hard",
+    "Clear all five episodes on Normal",
+    "Clear all five episodes on Hard"
 };
 
 const char *ach_name(AchId id)  { return (id < ACH_COUNT) ? s_names[id]  : "?"; }
