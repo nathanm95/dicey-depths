@@ -236,8 +236,16 @@ Settings that have worked, via `create_image_pixflux`:
 | `outline` | `single color black outline` | the only thing that reads at 48px on a wrist |
 | `detail` | `low detail` | fine detail is invisible and just costs colours |
 
-That produced 6-17 colours per sprite, binary alpha, under 1KB each — four enemies
-cost 1.9KB of the 256KB resource budget, so the full roster is nothing.
+That produced 5-17 colours per sprite, binary alpha, under 1KB each. Ten enemies plus the
+Dicey splash sprite cost about 11KB of the 256KB resource budget, so the rest of the roster
+is nothing.
+
+**`enemies.c` indices are load-bearing and easy to break.** `BOSS_FIRST` must equal the real
+array index of the first boss, and `s_items`-style `/*nn*/` comments are the only thing
+making that checkable by eye. Inserting enemies mid-table silently shifted every boss once
+already, and because `enemy_boss_for_level()` clamps out-of-range ids rather than failing,
+the symptom was every campaign level quietly ending against the same boss. If you insert
+enemies, renumber the comments and re-check `BOSS_FIRST`.
 
 **Always run `python3 tools/verify_art.py` before committing a sprite.** It fails on
 off-palette colours, partial alpha and oversized images. Its size limit is role-aware:

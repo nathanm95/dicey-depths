@@ -45,6 +45,36 @@
           "type": "bitmap",
           "name": "IMAGE_DICEY",
           "file": "images/dicey.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ENEMY_WASP",
+          "file": "images/enemy_wasp.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ENEMY_SPONGE",
+          "file": "images/enemy_sponge.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ENEMY_KETTLE",
+          "file": "images/enemy_kettle.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ENEMY_LANTERN",
+          "file": "images/enemy_lantern.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ENEMY_BOULDER",
+          "file": "images/enemy_boulder.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ENEMY_SNAIL",
+          "file": "images/enemy_snail.png"
         }
       ]
     }

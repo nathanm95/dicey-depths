@@ -583,7 +583,7 @@ int main(void) {
     }
 #endif
     floor_window_push();
-    combat_window_push(DD_BOOT_ENEMY);
+    combat_window_push(DD_BOOT_ENEMY, false);
 #endif
 
     app_event_loop();
