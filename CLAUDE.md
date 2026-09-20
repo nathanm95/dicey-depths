@@ -298,6 +298,29 @@ A bitmap also cannot be **scaled** — `graphics_draw_bitmap_in_rect` tiles rath
 scales. So a sprite enemy bobs where a procedural one squashes and stretches. If you
 want real squash on a sprite, it has to be pre-rendered frames, not a transform.
 
+## A held BACK belongs to the firmware, not to you
+
+`window_long_click_subscribe(BUTTON_ID_BACK, ...)` **never fires**. Holding BACK force-quits
+the app and the handler is not called. This was verified by experiment rather than assumed:
+on the same screen, a single BACK click reaches its handler (a toast appears) and a long
+SELECT reaches its handler (the enemy-kit panel opens), while a long BACK exits the app with
+a clean `Heap Usage ... Still allocated <0B>` — an ordinary exit, not a crash.
+
+The consequence is not just a dead handler. Quitting is always available to the player, so a
+fight going badly could be escaped by holding BACK and then resuming from the last save —
+a free retry that makes permadeath meaningless. `g_run.in_fight` is set and saved when a
+battle opens and cleared when it ends; `load_run()` discards a run that was put down in the
+middle of one. Keep that flag if you touch combat's entry or exit.
+
+## Checking the tables
+
+`tools/check_data.py` validates the hand-written tables against the constants that index
+them: `ITEM_REROLL` against the real position of the Reroll card, `BOSS_FIRST` against the
+first boss, every `/*nn*/` comment against its actual index, every item id an enemy or loot
+table references, parallel string arrays against their enums, and enemy depth ranges. None of
+this is checked by the compiler, and when it is wrong the game does not crash — it quietly
+does the wrong thing. Run it after touching `enemies.c`, `items.c`, `classes.c` or `rules.c`.
+
 ## Verifying in the emulator
 
 The emulator **cannot inject a drag** — only `Touchdown` arrives, never `PositionUpdate` or

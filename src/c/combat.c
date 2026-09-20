@@ -587,6 +587,7 @@ static void check_end(void) {
         if (g_run.rule == RULE_SUDDEN) gold *= 2;    // Sudden Death pays double
         g_run.hp = s_hero.hp;
         g_run.gold += gold;
+        g_run.in_fight = false;
         save_run();
         sound_play(SFX_WIN);
         ach_unlock(ACH_FIRST_WIN);
@@ -599,6 +600,7 @@ static void check_end(void) {
         s_phase = PHASE_OVER;
         g_last_battle = BATTLE_LOST;
         g_run.hp = 0;
+        g_run.in_fight = false;
         sound_play(SFX_LOSE);
         toast("You are out of the game.");
         if (s_foe_timer) { app_timer_cancel(s_foe_timer); s_foe_timer = NULL; }
@@ -1532,16 +1534,7 @@ static void click_back(ClickRecognizerRef r, void *ctx) {
         redraw();
         return;
     }
-    toast("No way out but through - hold BACK to quit");
-}
-
-static void click_back_long(ClickRecognizerRef r, void *ctx) {
-    if (s_phase == PHASE_OVER) return;
-    s_phase = PHASE_OVER;
-    g_last_battle = BATTLE_LOST;
-    g_run.hp = 0;
-    toast("You walk off the show.");
-    app_timer_register(1400, finish, NULL);
+    toast("No way out but through. Win it or lose it.");
 }
 
 static void click_config(void *ctx) {
@@ -1550,7 +1543,9 @@ static void click_config(void *ctx) {
     window_single_click_subscribe(BUTTON_ID_SELECT, click_select);
     window_long_click_subscribe(BUTTON_ID_SELECT, 500, click_select_long, NULL);
     window_single_click_subscribe(BUTTON_ID_BACK, click_back);
-    window_long_click_subscribe(BUTTON_ID_BACK, 700, click_back_long, NULL);
+    // No long-click on BACK: the firmware intercepts a held BACK to force-quit
+    // the app, so a handler here never runs. Verified by experiment — a long
+    // SELECT reaches its handler on the same screen, a long BACK does not.
 }
 
 // --- window ----------------------------------------------------------------
@@ -1629,6 +1624,13 @@ void combat_window_push(uint8_t enemy_id, bool elite) {
     if (rid) s_foe_bmp = gbitmap_create_with_resource(rid);
 
     s_hp_at_start = g_run.hp;
+    // Holding BACK force-quits the app, and the firmware will not let us catch
+    // it. Without this flag that is a free escape from a fight going badly:
+    // quit, relaunch, Continue, and the same fight starts again at the health
+    // you walked in with. Permadeath has to mean something, so a run that is
+    // put down in the middle of a fight does not get picked back up.
+    g_run.in_fight = true;
+    save_run();
     if (run_equip_slots() >= 6) ach_unlock(ACH_FULL_GRID);
     s_action_n = (uint8_t)(is_robot() ? 3 : 2);
     s_dice_n = is_robot() ? 0 : class_dice_for_level(g_run.klass, g_run.level);

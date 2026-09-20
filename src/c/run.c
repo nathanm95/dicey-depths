@@ -5,7 +5,7 @@ BattleResult g_last_battle = BATTLE_NONE;
 
 #define PERSIST_KEY_RUN 100
 #define PERSIST_KEY_VER 101
-#define PERSIST_VERSION 4
+#define PERSIST_VERSION 5
 
 uint8_t warrior_dice_for_level(uint8_t level) {
     return class_dice_for_level(CLASS_WARRIOR, level);
@@ -215,6 +215,8 @@ bool load_run(void) {
     if (!persist_exists(PERSIST_KEY_RUN)) return false;
     if (persist_read_int(PERSIST_KEY_VER) != PERSIST_VERSION) return false;
     if (persist_read_data(PERSIST_KEY_RUN, &g_run, sizeof(g_run)) != (int)sizeof(g_run)) return false;
+    // Put down in the middle of a fight: the run does not survive that.
+    if (g_run.in_fight) { clear_run(); return false; }
     return g_run.active;
 }
 

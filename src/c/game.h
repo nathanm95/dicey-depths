@@ -195,6 +195,7 @@ typedef struct {
     uint16_t gold;
     uint16_t limit_charge;
     bool     limit_ready;
+    bool     in_fight;      // set while a battle is open; see combat_window_push
 
     uint8_t  equip[MAX_EQUIP];
     uint8_t  equip_up;      // bitmask: which equipped cards the anvil improved

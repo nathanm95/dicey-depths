@@ -239,7 +239,9 @@ static const char HOWTO_TEXT[] =
 "CONTROLS\n"
 "Drag a die onto a card. Or tap a die, then tap a card. Or use the buttons: "
 "Up/Down to move, Select to pick a die and Select again to drop it.\n"
-"Tap the enemy (or hold Select) to see exactly what it is carrying.\n\n"
+"Tap the enemy (or hold Select) to see exactly what it is carrying.\n"
+"There is no quitting a fight: see it through. Closing the app part way "
+"through one ends the run.\n\n"
 "CARDS\n"
 "Each card takes a die that matches its slot. The little box on the card says "
 "what it will accept: E for even, O for odd, 4+ for four or higher, 3- for "
@@ -502,7 +504,13 @@ static void title_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *d
             break;
         case ROW_CAMPAIGN:
             snprintf(t, sizeof(t), "Campaign");
-            snprintf(s, sizeof(s), "%d of %d unlocked", g_prog.unlocked, RULE_COUNT);
+            // Count the campaign proper. RULE_COUNT includes the three Bonus
+            // Rounds, which are an encore rather than part of the five.
+            if (bonus_rounds_unlocked())
+                snprintf(s, sizeof(s), "All %d cleared + bonus", RULE_CAMPAIGN_COUNT);
+            else
+                snprintf(s, sizeof(s), "%d of %d unlocked",
+                         g_prog.unlocked, RULE_CAMPAIGN_COUNT);
             break;
         case ROW_ENDLESS:
             snprintf(t, sizeof(t), "Endless");
