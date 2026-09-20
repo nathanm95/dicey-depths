@@ -15,8 +15,8 @@
 static const EnemyDef s_enemies[] = {
   /* 0*/ {"Rat",          10, 2, {24, 23},         2,  3, 1, 2, SHAPE_RAT,     false},
   /* 1*/ {"Slime",        14, 2, {23, 25},         2,  3, 1, 2, SHAPE_SLIME,   false},
-  /* 2*/ {"Vacuum",       16, 2, {28, 23},         2,  4, 1, 3, SHAPE_VACUUM,  false},
-  /* 3*/ {"Imp",          15, 2, {27, 23},         2,  4, 2, 3, SHAPE_IMP,     false},
+  /* 2*/ {"Vacuum",       16, 2, {28, 23},         2,  4, 2, 4, SHAPE_VACUUM,  false},
+  /* 3*/ {"Imp",          15, 2, {27, 23},         2,  4, 1, 3, SHAPE_IMP,     false},
   /* 4*/ {"Ice Sprite",   18, 2, {26, 23},         2,  5, 2, 4, SHAPE_SPRITE,  false},
   /* 5*/ {"Ghost",        22, 3, {31, 23, 25},     3,  6, 3, 6, SHAPE_GHOST,   false},
   /* 6*/ {"Toad",         24, 2, {30, 23},         2,  6, 3, 6, SHAPE_TOAD,    false},
