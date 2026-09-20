@@ -246,7 +246,11 @@ static void inflict(Combatant *t, StatusId s, uint8_t n, bool on_hero) {
 }
 
 // --- firing ----------------------------------------------------------------
-static void apply_effects(const ItemDef *d, int16_t value, bool by_hero, bool weak, bool upgraded) {
+// `raw` is the pips actually rolled, before the anvil's bonus or a Weaken
+// halves it — a card that pays out on a six has to mean the six you rolled,
+// not the number the card worked out afterwards.
+static void apply_effects(const ItemDef *d, int16_t value, int16_t raw,
+                          bool by_hero, bool weak, bool upgraded) {
     Combatant *self  = by_hero ? &s_hero : &s_foe;
     Combatant *other = by_hero ? &s_foe  : &s_hero;
 
@@ -256,6 +260,9 @@ static void apply_effects(const ItemDef *d, int16_t value, bool by_hero, bool we
     for (int e = 0; e < 2; e++) {
         const Effect *ef = &d->eff[e];
         if (ef->kind == EFF_NONE) continue;
+        // eff[1] can be conditional. COND_ANY means it always fires, which is
+        // every ordinary two-effect card.
+        if (e == 1 && !cond_accepts(d->bonus, (uint8_t)(raw < 0 ? 0 : raw))) continue;
         int16_t v = (int16_t)(value * ef->mult + ef->add);
         switch (ef->kind) {
             case EFF_DAMAGE: deal_damage(other, v, false, !by_hero); break;
@@ -315,7 +322,8 @@ static void fire_card(Card *c, bool by_hero) {
     int times = 1;
     if (self->status[ST_FURY] > 0) { times = 2; self->status[ST_FURY]--; }
 
-    for (int t = 0; t < times; t++) apply_effects(d, value, by_hero, c->weakened, c->upgraded);
+    bool bonus_hit = (d->bonus.kind != COND_ANY) && cond_accepts(d->bonus, (uint8_t)value);
+    for (int t = 0; t < times; t++) apply_effects(d, value, value, by_hero, c->weakened, c->upgraded);
 
     if (d->uses && c->uses_left > 0) c->uses_left--;
     c->weakened = false;
@@ -326,7 +334,8 @@ static void fire_card(Card *c, bool by_hero) {
 
     char eff[24];
     item_effect_label_up(c->id, c->upgraded, eff, sizeof(eff));
-    toast("%s%s %d  (%s)", times > 1 ? "FURY! " : "", d->name, value, eff);
+    if (bonus_hit) toast("%s%s %d - SIX! (%s)", times > 1 ? "FURY! " : "", d->name, value, eff);
+    else           toast("%s%s %d  (%s)", times > 1 ? "FURY! " : "", d->name, value, eff);
 
     for (int i = 0; i < d->slots; i++) c->filled[i] = -1;
     check_end();
@@ -437,6 +446,7 @@ static int16_t score_card(const Card *c, uint8_t pips) {
     int16_t s = 0;
     for (int e = 0; e < 2; e++) {
         const Effect *ef = &d->eff[e];
+        if (e == 1 && !cond_accepts(d->bonus, pips)) continue;   // bonus will not fire
         int16_t v = (int16_t)(pips * ef->mult + ef->add);
         switch (ef->kind) {
             case EFF_DAMAGE:  s += v; break;

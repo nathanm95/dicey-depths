@@ -81,6 +81,12 @@ typedef struct {
     uint8_t  uses;      // 0 = unlimited, else uses per battle
     uint8_t  tier;      // 1 common .. 3 rare
     uint8_t  price;
+    // When eff[1] fires, tested against the pips actually rolled. COND_ANY —
+    // which is also what every entry that omits this field gets, since it is
+    // zero — means "always", the ordinary two-effect card. Anything else makes
+    // eff[1] a BONUS: the card still accepts any die its slot allows and pays
+    // out normally, and simply does something extra when the roll obliges.
+    Cond     bonus;
 } ItemDef;
 
 #define ITEM_NONE   0xFF

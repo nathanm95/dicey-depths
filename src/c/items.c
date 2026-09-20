@@ -22,81 +22,85 @@
 #define E_NONE      {EFF_NONE, 0, 0, 0}
 
 static const ItemDef s_items[] = {
-    /* 0 */ {"Sword",       1, {C_ANY},        {{EFF_DAMAGE, 1, 0, 0}, E_NONE}, 0, 1,  6},
-    /* 1 */ {"Shield",      1, {C_ANY},        {{EFF_SHIELD, 1, 0, 0}, E_NONE}, 0, 1,  6},
-    /* 2 */ {"Hammer",      1, {C_EVEN},       {{EFF_DAMAGE, 1, 2, 0}, E_NONE}, 0, 1,  8},
-    /* 3 */ {"Spear",       1, {C_ODD},        {{EFF_DAMAGE, 1, 1, 0}, E_NONE}, 0, 1,  8},
-    /* 4 */ {"Dagger",      1, {C_MAX(3)},     {{EFF_DAMAGE, 1, 3, 0}, E_NONE}, 0, 1,  8},
-    /* 5 */ {"Bandage",     1, {C_ANY},        {{EFF_HEAL,   1, 0, 0}, E_NONE}, 2, 1,  7},
-    /* 6 */ {"Backfire",    1, {C_ANY},        {{EFF_DAMAGE, 2, 0, 0}, {EFF_HEAL, 0, -2, 0}}, 0, 1, 9},
-    /* 7 */ {"Buckler",     1, {C_MAX(4)},     {{EFF_SHIELD, 1, 2, 0}, E_NONE}, 0, 1,  8},
+    /* 0 */ {"Sword",       1, {C_ANY},        {{EFF_DAMAGE, 1, 0, 0}, E_NONE}, 0, 1,  6, C_ANY},
+    /* 1 */ {"Shield",      1, {C_ANY},        {{EFF_SHIELD, 1, 0, 0}, E_NONE}, 0, 1,  6, C_ANY},
+    /* 2 */ {"Hammer",      1, {C_EVEN},       {{EFF_DAMAGE, 1, 2, 0}, E_NONE}, 0, 1,  8, C_ANY},
+    /* 3 */ {"Spear",       1, {C_ODD},        {{EFF_DAMAGE, 1, 1, 0}, E_NONE}, 0, 1,  8, C_ANY},
+    /* 4 */ {"Dagger",      1, {C_MAX(3)},     {{EFF_DAMAGE, 1, 3, 0}, E_NONE}, 0, 1,  8, C_ANY},
+    /* 5 */ {"Bandage",     1, {C_ANY},        {{EFF_HEAL,   1, 0, 0}, E_NONE}, 2, 1,  7, C_ANY},
+    /* 6 */ {"Backfire",    1, {C_ANY},        {{EFF_DAMAGE, 2, 0, 0}, {EFF_HEAL, 0, -2, 0}}, 0, 1, 9, C_ANY},
+    /* 7 */ {"Buckler",     1, {C_MAX(4)},     {{EFF_SHIELD, 1, 2, 0}, E_NONE}, 0, 1,  8, C_ANY},
 
-    /* 8 */ {"Broadsword",  1, {C_ANY},        {{EFF_DAMAGE, 1, 2, 0}, E_NONE}, 0, 2, 14},
-    /* 9 */ {"Flame Tongue",1, {C_ANY},        {{EFF_DAMAGE, 1, 0, 0}, {EFF_INFLICT, 0, 0, ST_BURN}}, 0, 2, 15},
-    /*10 */ {"Frost Brand", 1, {C_ANY},        {{EFF_DAMAGE, 1, 0, 0}, {EFF_INFLICT, 0, 0, ST_FROZEN}}, 0, 2, 15},
-    /*11 */ {"Tower Shield",1, {C_MIN(4)},     {{EFF_SHIELD, 2, 0, 0}, E_NONE}, 0, 2, 14},
-    /*12 */ {"Vampire Fang",1, {C_ANY},        {{EFF_DRAIN,  1, 0, 0}, E_NONE}, 0, 2, 16},
-    /*13 */ {"Poison Dirk", 1, {C_ODD},        {{EFF_DAMAGE, 1, 0, 0}, {EFF_INFLICT, 0, 0, ST_POISON}}, 0, 2, 15},
-    /*14 */ {"Warhammer",   1, {C_EVEN},       {{EFF_DAMAGE, 2, 0, 0}, E_NONE}, 0, 2, 16},
-    /*15 */ {"Taser",       1, {C_MIN(3)},     {{EFF_DAMAGE, 1, 0, 0}, {EFF_INFLICT, 0, 0, ST_SHOCK}}, 0, 2, 15},
-    /*16 */ {"Tonic",       1, {C_ANY},        {{EFF_HEAL,   1, 2, 0}, E_NONE}, 2, 2, 13},
+    /* 8 */ {"Broadsword",  1, {C_ANY},        {{EFF_DAMAGE, 1, 2, 0}, E_NONE}, 0, 2, 14, C_ANY},
+    /* 9 */ {"Flame Tongue",1, {C_ANY},        {{EFF_DAMAGE, 1, 0, 0}, {EFF_INFLICT, 0, 0, ST_BURN}}, 0, 2, 15, C_ANY},
+    /*10 */ {"Frost Brand", 1, {C_ANY},        {{EFF_DAMAGE, 1, 0, 0}, {EFF_INFLICT, 0, 0, ST_FROZEN}}, 0, 2, 15, C_ANY},
+    /*11 */ {"Tower Shield",1, {C_MIN(4)},     {{EFF_SHIELD, 2, 0, 0}, E_NONE}, 0, 2, 14, C_ANY},
+    /*12 */ {"Vampire Fang",1, {C_ANY},        {{EFF_DRAIN,  1, 0, 0}, E_NONE}, 0, 2, 16, C_ANY},
+    /*13 */ {"Poison Dirk", 1, {C_ODD},        {{EFF_DAMAGE, 1, 0, 0}, {EFF_INFLICT, 0, 0, ST_POISON}}, 0, 2, 15, C_ANY},
+    /*14 */ {"Warhammer",   1, {C_EVEN},       {{EFF_DAMAGE, 2, 0, 0}, E_NONE}, 0, 2, 16, C_ANY},
+    /*15 */ {"Taser",       1, {C_MIN(3)},     {{EFF_DAMAGE, 1, 0, 0}, {EFF_INFLICT, 0, 0, ST_SHOCK}}, 0, 2, 15, C_ANY},
+    /*16 */ {"Tonic",       1, {C_ANY},        {{EFF_HEAL,   1, 2, 0}, E_NONE}, 2, 2, 13, C_ANY},
 
-    /*17 */ {"Thunderbolt", 1, {C_EXACT(6)},   {{EFF_DAMAGE, 0, 12, 0}, E_NONE}, 0, 3, 22},
-    /*18 */ {"Executioner", 2, {C_ANY, C_ANY}, {{EFF_DAMAGE, 1, 3, 0}, E_NONE}, 0, 3, 24},
-    /*19 */ {"Rage",        1, {C_ANY},        {{EFF_SELF, 0, 0, ST_FURY}, E_NONE}, 1, 3, 20},
-    /*20 */ {"Greataxe",    1, {C_MIN(5)},     {{EFF_DAMAGE, 2, 2, 0}, E_NONE}, 0, 3, 23},
-    /*21 */ {"Elixir",      1, {C_ANY},        {{EFF_HEAL,   1, 3, 0}, E_NONE}, 1, 3, 18},
-    /*22 */ {"Duel Blade",  2, {C_ODD, C_ODD}, {{EFF_DAMAGE, 2, 0, 0}, E_NONE}, 0, 3, 25},
+    /*17 */ {"Thunderbolt", 1, {C_ANY},        {{EFF_DAMAGE, 1, 0, 0}, {EFF_DAMAGE, 0, 12, 0}}, 0, 3, 22, C_EXACT(6)},
+    /*18 */ {"Executioner", 2, {C_ANY, C_ANY}, {{EFF_DAMAGE, 1, 3, 0}, E_NONE}, 0, 3, 24, C_ANY},
+    /*19 */ {"Rage",        1, {C_ANY},        {{EFF_SELF, 0, 0, ST_FURY}, E_NONE}, 1, 3, 20, C_ANY},
+    /*20 */ {"Greataxe",    1, {C_MIN(5)},     {{EFF_DAMAGE, 2, 2, 0}, E_NONE}, 0, 3, 23, C_ANY},
+    /*21 */ {"Elixir",      1, {C_ANY},        {{EFF_HEAL,   1, 3, 0}, E_NONE}, 1, 3, 18, C_ANY},
+    /*22 */ {"Duel Blade",  2, {C_ODD, C_ODD}, {{EFF_DAMAGE, 2, 0, 0}, E_NONE}, 0, 3, 25, C_ANY},
 
     // Enemy-only kit. Drawn on screen during a fight, so nothing an enemy does
     // should ever be a surprise — only a problem.
-    /*23 */ {"Claw",        1, {C_ANY},        {{EFF_DAMAGE, 1, 0, 0}, E_NONE}, 0, 1, 0},
-    /*24 */ {"Nibble",      1, {C_MAX(3)},     {{EFF_DAMAGE, 1, 1, 0}, E_NONE}, 0, 1, 0},
-    /*25 */ {"Hide",        1, {C_ANY},        {{EFF_SHIELD, 1, 0, 0}, E_NONE}, 0, 1, 0},
-    /*26 */ {"Chill Touch", 1, {C_ODD},        {{EFF_INFLICT, 0, 0, ST_FROZEN}, E_NONE}, 0, 1, 0},
-    /*27 */ {"Ember",       1, {C_EVEN},       {{EFF_INFLICT, 0, 0, ST_BURN}, E_NONE}, 0, 1, 0},
-    /*28 */ {"Siphon",      1, {C_ANY},        {{EFF_DRAIN,  1, 0, 0}, E_NONE}, 0, 1, 0},
-    /*29 */ {"Static",      1, {C_MIN(4)},     {{EFF_INFLICT, 0, 0, ST_SHOCK}, E_NONE}, 0, 1, 0},
-    /*30 */ {"Spit",        1, {C_ANY},        {{EFF_INFLICT, 0, 0, ST_POISON}, E_NONE}, 0, 1, 0},
-    /*31 */ {"Smother",     1, {C_ANY},        {{EFF_INFLICT, 0, 0, ST_BLIND}, E_NONE}, 0, 1, 0},
-    /*32 */ {"Crush",       1, {C_MIN(5)},     {{EFF_DAMAGE, 2, 0, 0}, E_NONE}, 0, 1, 0},
-    /*33 */ {"Hex",         1, {C_ANY},        {{EFF_INFLICT, 0, 0, ST_WEAKEN}, E_NONE}, 0, 1, 0},
-    /*34 */ {"Dragon Bite", 1, {C_ANY},        {{EFF_DAMAGE, 1, 3, 0}, E_NONE}, 0, 1, 0},
-    /*35 */ {"Wing Buffet", 1, {C_EVEN},       {{EFF_DAMAGE, 1, 0, 0}, {EFF_INFLICT, 0, 0, ST_SILENCE}}, 0, 1, 0},
-    /*36 */ {"Audit",       1, {C_ANY},        {{EFF_DAMAGE, 1, 1, 0}, {EFF_INFLICT, 0, 0, ST_WEAKEN}}, 0, 1, 0},
-    /*37 */ {"Reflect",     1, {C_ODD},        {{EFF_DAMAGE, 2, 0, 0}, E_NONE}, 0, 1, 0},
-    /*38 */ {"Applause",    1, {C_EVEN},       {{EFF_SHIELD, 1, 2, 0}, E_NONE}, 0, 1, 0},
-    /*39 */ {"Buzzer",      1, {C_ANY},        {{EFF_INFLICT, 0, 0, ST_SILENCE}, E_NONE}, 0, 1, 0},
-    /*40 */ {"Gnaw",        1, {C_ODD},        {{EFF_DRAIN, 1, 1, 0}, E_NONE}, 0, 1, 0},
+    /*23 */ {"Claw",        1, {C_ANY},        {{EFF_DAMAGE, 1, 0, 0}, E_NONE}, 0, 1, 0, C_ANY},
+    /*24 */ {"Nibble",      1, {C_MAX(3)},     {{EFF_DAMAGE, 1, 1, 0}, E_NONE}, 0, 1, 0, C_ANY},
+    /*25 */ {"Hide",        1, {C_ANY},        {{EFF_SHIELD, 1, 0, 0}, E_NONE}, 0, 1, 0, C_ANY},
+    /*26 */ {"Chill Touch", 1, {C_ODD},        {{EFF_INFLICT, 0, 0, ST_FROZEN}, E_NONE}, 0, 1, 0, C_ANY},
+    /*27 */ {"Ember",       1, {C_EVEN},       {{EFF_INFLICT, 0, 0, ST_BURN}, E_NONE}, 0, 1, 0, C_ANY},
+    /*28 */ {"Siphon",      1, {C_ANY},        {{EFF_DRAIN,  1, 0, 0}, E_NONE}, 0, 1, 0, C_ANY},
+    /*29 */ {"Static",      1, {C_MIN(4)},     {{EFF_INFLICT, 0, 0, ST_SHOCK}, E_NONE}, 0, 1, 0, C_ANY},
+    /*30 */ {"Spit",        1, {C_ANY},        {{EFF_INFLICT, 0, 0, ST_POISON}, E_NONE}, 0, 1, 0, C_ANY},
+    /*31 */ {"Smother",     1, {C_ANY},        {{EFF_INFLICT, 0, 0, ST_BLIND}, E_NONE}, 0, 1, 0, C_ANY},
+    /*32 */ {"Crush",       1, {C_MIN(5)},     {{EFF_DAMAGE, 2, 0, 0}, E_NONE}, 0, 1, 0, C_ANY},
+    /*33 */ {"Hex",         1, {C_ANY},        {{EFF_INFLICT, 0, 0, ST_WEAKEN}, E_NONE}, 0, 1, 0, C_ANY},
+    /*34 */ {"Dragon Bite", 1, {C_ANY},        {{EFF_DAMAGE, 1, 3, 0}, E_NONE}, 0, 1, 0, C_ANY},
+    /*35 */ {"Wing Buffet", 1, {C_EVEN},       {{EFF_DAMAGE, 1, 0, 0}, {EFF_INFLICT, 0, 0, ST_SILENCE}}, 0, 1, 0, C_ANY},
+    /*36 */ {"Audit",       1, {C_ANY},        {{EFF_DAMAGE, 1, 1, 0}, {EFF_INFLICT, 0, 0, ST_WEAKEN}}, 0, 1, 0, C_ANY},
+    /*37 */ {"Reflect",     1, {C_ODD},        {{EFF_DAMAGE, 2, 0, 0}, E_NONE}, 0, 1, 0, C_ANY},
+    /*38 */ {"Applause",    1, {C_EVEN},       {{EFF_SHIELD, 1, 2, 0}, E_NONE}, 0, 1, 0, C_ANY},
+    /*39 */ {"Buzzer",      1, {C_ANY},        {{EFF_INFLICT, 0, 0, ST_SILENCE}, E_NONE}, 0, 1, 0, C_ANY},
+    /*40 */ {"Gnaw",        1, {C_ODD},        {{EFF_DRAIN, 1, 1, 0}, E_NONE}, 0, 1, 0, C_ANY},
 
     // The Warrior's signature move, and the one card exempt from the
     // once-per-turn rule: its allowance is set each turn from how many dice you
     // have, so a bigger handful of dice also buys you more chances to fix one.
     // Feeding it a die rerolls THAT die and gives it straight back, so the cost
     // is the card's allowance rather than the die itself.
-    /*41 */ {"Reroll",      1, {C_ANY},        {{EFF_REROLL, 0, 0, 0}, E_NONE}, 1, 1, 12},
+    /*41 */ {"Reroll",      1, {C_ANY},        {{EFF_REROLL, 0, 0, 0}, E_NONE}, 1, 1, 12, C_ANY},
 
     // --- Sixes ------------------------------------------------------------
     // A 6 is the roll you are happiest to see and the one hardest to place,
     // since so many cards want something small or something odd. These give it
     // somewhere to go, and pay accordingly.
-    /*42 */ {"Sunburst",    1, {C_EXACT(6)},   {{EFF_DAMAGE, 0, 9, 0}, {EFF_INFLICT, 0, 0, ST_BURN}}, 0, 2, 18},
-    /*43 */ {"Six Shooter", 1, {C_EXACT(6)},   {{EFF_DAMAGE, 0, 7, 0}, {EFF_SELF, 0, 0, ST_FURY}}, 1, 3, 24},
-    /*44 */ {"Crown",       1, {C_EXACT(6)},   {{EFF_SHIELD, 0, 8, 0}, {EFF_HEAL, 0, 4, 0}}, 0, 2, 17},
-    /*45 */ {"Loaded Die",  1, {C_MIN(5)},     {{EFF_DAMAGE, 2, 1, 0}, E_NONE}, 0, 2, 16},
-    /*46 */ {"Jackpot",     2, {C_EXACT(6), C_EXACT(6)}, {{EFF_DAMAGE, 0, 24, 0}, E_NONE}, 0, 3, 28},
+    // These take ANY die and pay out normally — a six just makes them do
+    // something extra. A card that demanded a six would be dead on most turns;
+    // a card that merely hopes for one is live every turn and thrilling
+    // occasionally, which is the better deal in both directions.
+    /*42 */ {"Sunburst",    1, {C_ANY},        {{EFF_DAMAGE, 1, 0, 0}, {EFF_INFLICT, 0, 0, ST_BURN}}, 0, 2, 18, C_EXACT(6)},
+    /*43 */ {"Six Shooter", 1, {C_ANY},        {{EFF_DAMAGE, 1, 1, 0}, {EFF_SELF, 0, 0, ST_FURY}}, 0, 3, 24, C_EXACT(6)},
+    /*44 */ {"Crown",       1, {C_ANY},        {{EFF_SHIELD, 1, 0, 0}, {EFF_HEAL, 0, 5, 0}}, 0, 2, 17, C_EXACT(6)},
+    /*45 */ {"Loaded Die",  1, {C_ANY},        {{EFF_DAMAGE, 1, 0, 0}, {EFF_DAMAGE, 0, 6, 0}}, 0, 2, 16, C_EXACT(6)},
+    /*46 */ {"Jackpot",     2, {C_ANY, C_ANY}, {{EFF_DAMAGE, 2, 0, 0}, {EFF_SELF, 0, 0, ST_FURY}}, 0, 3, 28, {COND_EXACT, 12}},
 
     // --- Fussy, but worth it ----------------------------------------------
     // Cards with a narrow mouth and a big payoff. They turn a die you would
     // have thrown away into the best move of the turn — and are dead weight on
     // the turn the roll does not cooperate. That trade is the whole point.
-    /*47 */ {"Stiletto",    1, {C_EXACT(1)},   {{EFF_DAMAGE, 0, 8, 0}, E_NONE}, 0, 2, 16},
-    /*48 */ {"Snake Eyes",  2, {C_EXACT(1), C_EXACT(1)}, {{EFF_DAMAGE, 0, 20, 0}, E_NONE}, 0, 3, 26},
-    /*49 */ {"Garrote",     1, {C_MAX(2)},     {{EFF_DAMAGE, 0, 6, 0}, {EFF_INFLICT, 0, 0, ST_POISON}}, 0, 2, 17},
-    /*50 */ {"Pin",         1, {C_EXACT(2)},   {{EFF_DAMAGE, 0, 7, 0}, E_NONE}, 0, 1, 11},
-    /*51 */ {"Trident",     1, {C_EXACT(3)},   {{EFF_DAMAGE, 0, 9, 0}, E_NONE}, 0, 2, 15},
-    /*52 */ {"Quarterstaff",1, {C_EXACT(4)},   {{EFF_DAMAGE, 0, 6, 0}, {EFF_SHIELD, 0, 4, 0}}, 0, 2, 15},
-    /*53 */ {"Gambit",      1, {C_EXACT(1)},   {{EFF_REROLL, 0, 0, 0}, {EFF_SHIELD, 0, 5, 0}}, 2, 2, 16},
+    /*47 */ {"Stiletto",    1, {C_EXACT(1)},   {{EFF_DAMAGE, 0, 8, 0}, E_NONE}, 0, 2, 16, C_ANY},
+    /*48 */ {"Snake Eyes",  2, {C_EXACT(1), C_EXACT(1)}, {{EFF_DAMAGE, 0, 20, 0}, E_NONE}, 0, 3, 26, C_ANY},
+    /*49 */ {"Garrote",     1, {C_MAX(2)},     {{EFF_DAMAGE, 0, 6, 0}, {EFF_INFLICT, 0, 0, ST_POISON}}, 0, 2, 17, C_ANY},
+    /*50 */ {"Pin",         1, {C_EXACT(2)},   {{EFF_DAMAGE, 0, 7, 0}, E_NONE}, 0, 1, 11, C_ANY},
+    /*51 */ {"Trident",     1, {C_EXACT(3)},   {{EFF_DAMAGE, 0, 9, 0}, E_NONE}, 0, 2, 15, C_ANY},
+    /*52 */ {"Quarterstaff",1, {C_EXACT(4)},   {{EFF_DAMAGE, 0, 6, 0}, {EFF_SHIELD, 0, 4, 0}}, 0, 2, 15, C_ANY},
+    /*53 */ {"Gambit",      1, {C_EXACT(1)},   {{EFF_REROLL, 0, 0, 0}, {EFF_SHIELD, 0, 5, 0}}, 2, 2, 16, C_ANY},
 };
 
 #define ITEM_TOTAL ((uint8_t)(sizeof(s_items) / sizeof(s_items[0])))
@@ -192,8 +196,13 @@ void item_effect_label_up(uint8_t id, bool upgraded, char *out, size_t len) {
     char a[18] = "", b[18] = "";
     effect_tag(&d->eff[0], upgraded ? 1 : 0, a, sizeof(a));
     effect_tag(&d->eff[1], 0, b, sizeof(b));
-    if (b[0]) snprintf(out, len, "%s,%s", a, b);
-    else      snprintf(out, len, "%s", a);
+    if (!b[0]) { snprintf(out, len, "%s", a); return; }
+    if (d->bonus.kind == COND_ANY) { snprintf(out, len, "%s,%s", a, b); return; }
+    // A conditional second effect reads as "what it needs : what you get".
+    char need[8];
+    if (d->bonus.kind == COND_EXACT) snprintf(need, sizeof(need), "%d", d->bonus.arg);
+    else cond_label_short(d->bonus, need, sizeof(need));
+    snprintf(out, len, "%s %s:%s", a, need, b);
 }
 
 void item_effect_label(uint8_t id, char *out, size_t len) {

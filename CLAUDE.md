@@ -122,6 +122,16 @@ Agreed up front; don't relitigate without asking.
   whole layer but not a context to a sub-rect, so a half-scrolled row would spill over the
   HUD. Snapping to rows means every drawn cell is fully inside the grid and no clipping is
   needed. `MAX_EQUIP` is the ceiling (6); `run_equip_slots()` is what is unlocked.
+- **A six is a bonus, never a gate.** `ItemDef.bonus` is a `Cond` tested against the pips
+  actually rolled; when it is anything other than `COND_ANY`, `eff[1]` only fires if the roll
+  satisfies it. The card still accepts any die its slot allows and pays out normally — it
+  just does something extra on a six. A card that *demanded* a six would be dead on five
+  turns out of six; one that merely hopes for one is live every turn and thrilling
+  occasionally. `COND_ANY` (zero) means "always", which is every ordinary two-effect card —
+  but the field must be written explicitly in the table because the build runs
+  `-Werror=missing-field-initializers`.
+  The label reads `dmg 6:BRN`: what it always does, then what it needs and what that buys.
+  The AI's `score_card()` skips a bonus that will not fire, or it overvalues the card.
 - **A card's condition is drawn inside its slot box**, not on the effect line — the box is
   the thing that accepts the die. `cond_label_short()` exists because a ~20px box cannot
   hold the word "even"; lists use the full words via `cond_label()`.
