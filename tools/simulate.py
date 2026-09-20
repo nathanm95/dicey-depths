@@ -106,6 +106,18 @@ def accepts(c, pips):
     k,a = c
     return [True, pips%2==1, pips%2==0, pips==a, pips>=a, pips<=a][k]
 
+def widens(idx):
+    """The anvil widens a window rather than padding a number."""
+    k = ITEMS[idx]["cond"][0][0]
+    return k in (COND["COND_MAX"], COND["COND_MIN"])
+
+def cond_up(idx, slot, up):
+    k,a = ITEMS[idx]["cond"][slot]
+    if not up or slot != 0: return (k,a)
+    if k == COND["COND_MAX"] and a < 6: return (k, a+1)
+    if k == COND["COND_MIN"] and a > 1: return (k, a-1)
+    return (k,a)
+
 # ---------------------------------------------------------------- combat
 class Side:
     def __init__(s, hp, cards, dice):
@@ -119,7 +131,7 @@ def mkcards(ids, upg=()):
 def fire(card, value, me, foe, d, inc_pct):
     it = ITEMS[card["id"]]
     raw = value
-    if card["up"]: value += 1
+    if card["up"] and not widens(card["id"]): value += 1
     if card["weak"]: value = max(1, value//2); card["weak"]=False
     times = 2 if me.st[ST["ST_FURY"]]>0 else 1
     if times==2: me.st[ST["ST_FURY"]]-=1
@@ -215,14 +227,14 @@ def take_turn(me, foe, robot, inc_pct, rule=0):
             if it["eff"][0][0]==EFF["EFF_REROLL"]: continue      # handled below
             if it["slots"]==1:
                 for di,p in enumerate(dice):
-                    if used[di] or not accepts(it["cond"][0], p): continue
+                    if used[di] or not accepts(cond_up(c["id"],0,c["up"]), p): continue
                     sc=score(c,p,me)
                     if best is None or sc>best[0]: best=(sc,[di],c)
             else:
                 # Two-slot cards are among the strongest in the game; a policy
                 # that ignores them badly understates what a player can do.
                 for a in range(len(dice)):
-                    if used[a] or not accepts(it["cond"][0], dice[a]): continue
+                    if used[a] or not accepts(cond_up(c["id"],0,c["up"]), dice[a]): continue
                     for b in range(len(dice)):
                         if b==a or used[b] or not accepts(it["cond"][1], dice[b]): continue
                         sc=score(c, dice[a]+dice[b], me)

@@ -69,7 +69,13 @@ static void node_line(const Node *n, char *title, size_t tl, char *sub, size_t s
             break;
         case NODE_CHEST:
             snprintf(title, tl, "Chest");
-            snprintf(sub, sl, n->used ? "Empty" : "%s", item_def(n->arg)->name);
+            if (n->used) snprintf(sub, sl, "Empty");
+            else {
+                char eff[24], c0[10];
+                item_effect_label(n->arg, eff, sizeof(eff));
+                cond_label(item_def(n->arg)->cond[0], c0, sizeof(c0));
+                snprintf(sub, sl, "%s: %s %s", item_def(n->arg)->name, c0, eff);
+            }
             break;
         case NODE_SHOP:
             snprintf(title, tl, "Shop");

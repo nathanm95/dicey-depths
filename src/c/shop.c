@@ -143,12 +143,9 @@ static void anvil_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *d
         snprintf(t, sizeof(t), "Slot %d", idx->row + 1);
         snprintf(s, sizeof(s), "empty");
     } else {
-        char before[24], after[24];
-        item_effect_label_up(id, run_is_upgraded(true, idx->row), before, sizeof(before));
-        item_effect_label_up(id, true, after, sizeof(after));
         snprintf(t, sizeof(t), "%s", item_def(id)->name);
         if (run_is_upgraded(true, idx->row)) snprintf(s, sizeof(s), "already improved");
-        else snprintf(s, sizeof(s), "%s  ->  %s", before, after);
+        else item_upgrade_label(id, s, sizeof(s));
     }
     menu_cell_basic_draw(ctx, cell, t, s, NULL);
 }
@@ -230,8 +227,13 @@ static void trade_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *d
         snprintf(t, sizeof(t), "Slot %d", idx->row + 1);
         snprintf(sub, sizeof(sub), "empty");
     } else {
-        snprintf(t, sizeof(t), "%s", item_def(id)->name);
-        snprintf(sub, sizeof(sub), "-> %s", item_def(s_offer[idx->row])->name);
+        uint8_t got = s_offer[idx->row];
+        const ItemDef *gd = item_def(got);
+        char eff[24], c0[10];
+        item_effect_label(got, eff, sizeof(eff));
+        cond_label(gd->cond[0], c0, sizeof(c0));
+        snprintf(t, sizeof(t), "%s -> %s", item_def(id)->name, gd->name);
+        snprintf(sub, sizeof(sub), "%s %s%s", c0, eff, gd->uses ? " (limited)" : "");
     }
     menu_cell_basic_draw(ctx, cell, t, sub, NULL);
 }

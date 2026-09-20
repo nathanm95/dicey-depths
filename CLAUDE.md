@@ -135,6 +135,15 @@ Agreed up front; don't relitigate without asking.
   `-Werror=missing-field-initializers`.
   The label reads `dmg 6:BRN`: what it always does, then what it needs and what that buys.
   The AI's `score_card()` skips a bonus that will not fire, or it overvalues the card.
+- **The anvil improves a card in the card's own terms.** A card with a *window* — "3 or
+  lower", "5 or higher" — gets the window **widened** (`3-` becomes `4-`), because a bigger
+  number is worth little to a card that can rarely fire. Everything else gets +1 to its
+  value. Never both. See `item_upgrade_widens()` / `item_cond_up()`, and note that anything
+  reading a card's condition must go through `item_cond_up()` or it will show the unupgraded
+  window.
+- **Anywhere a card can be acquired must say what it does**, not just name it. The chest, the
+  shop and the trading post all print name + condition + effect. The trading post used to
+  show only the name of what you were being offered, which made swapping a coin toss.
 - **A card's condition is drawn inside its slot box**, not on the effect line — the box is
   the thing that accepts the die. `cond_label_short()` exists because a ~20px box cannot
   hold the word "even"; lists use the full words via `cond_label()`.

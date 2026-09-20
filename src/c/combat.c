@@ -203,7 +203,7 @@ static bool can_place(const Card *c, const Die *die, const char **why) {
     if (!card_usable(c)) { if (why) *why = "All used up"; return false; }
     int slot = card_next_open_slot(c);
     if (slot < 0) { if (why) *why = "No room"; return false; }
-    if (!cond_accepts(item_def(c->id)->cond[slot], die->pips)) {
+    if (!cond_accepts(item_cond_up(c->id, (uint8_t)slot, c->upgraded), die->pips)) {
         if (why) *why = "Wrong number for that slot";
         return false;
     }
@@ -349,7 +349,9 @@ static void fire_card(Card *c, bool by_hero) {
     if (self->status[ST_FURY] > 0) { times = 2; self->status[ST_FURY]--; }
 
     bool bonus_hit = (d->bonus.kind != COND_ANY) && cond_accepts(d->bonus, (uint8_t)value);
-    for (int t = 0; t < times; t++) apply_effects(d, value, value, by_hero, c->weakened, c->upgraded);
+    // An upgrade either widens the window or adds to the numbers, never both.
+    bool value_bonus = c->upgraded && !item_upgrade_widens(c->id);
+    for (int t = 0; t < times; t++) apply_effects(d, value, value, by_hero, c->weakened, value_bonus);
 
     if (d->uses && c->uses_left > 0) c->uses_left--;
     c->weakened = false;
@@ -363,7 +365,7 @@ static void fire_card(Card *c, bool by_hero) {
     }
 
     char eff[24];
-    item_effect_label_up(c->id, c->upgraded, eff, sizeof(eff));
+    item_effect_label_up(c->id, value_bonus, eff, sizeof(eff));
     if (bonus_hit) toast("%s%s %d - SIX! (%s)", times > 1 ? "FURY! " : "", d->name, value, eff);
     else           toast("%s%s %d  (%s)", times > 1 ? "FURY! " : "", d->name, value, eff);
 
@@ -998,8 +1000,8 @@ static void draw_card(GContext *ctx, const Layout *L, int i) {
     ui_draw_panel(ctx, r, fill, COL_INK, selected || hovering);
 
     char eff[24], cond[10], line[44];
-    item_effect_label_up(c->id, c->upgraded, eff, sizeof(eff));
-    cond_label(d->cond[0], cond, sizeof(cond));
+    item_effect_label_up(c->id, c->upgraded && !item_upgrade_widens(c->id), eff, sizeof(eff));
+    cond_label(item_cond_up(c->id, 0, c->upgraded), cond, sizeof(cond));
 
     int16_t slot_w = (int16_t)(d->slots * (L->slot[i][0].size.w + 2) + 4);
 
@@ -1044,7 +1046,7 @@ static void draw_card(GContext *ctx, const Layout *L, int i) {
             graphics_context_set_stroke_color(ctx, COL_INK);
             graphics_draw_round_rect(ctx, sr, 3);
             char cl[10];
-            cond_label_short(d->cond[s], cl, sizeof(cl));
+            cond_label_short(item_cond_up(c->id, (uint8_t)s, c->upgraded), cl, sizeof(cl));
             // "any" takes anything, so an empty box says it better than any label.
             if (cl[0]) {
                 ui_draw_text_c(ctx, cl, ui_font_tiny(),

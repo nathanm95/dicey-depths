@@ -46,8 +46,8 @@ static void draw_header(GContext *ctx, const Layer *cell, uint16_t section, void
 static void item_row(uint8_t id, bool upgraded, char *t, size_t tl, char *s, size_t sl) {
     const ItemDef *d = item_def(id);
     char eff[24], c0[10], c1[10];
-    item_effect_label_up(id, upgraded, eff, sizeof(eff));
-    cond_label(d->cond[0], c0, sizeof(c0));
+    item_effect_label_up(id, upgraded && !item_upgrade_widens(id), eff, sizeof(eff));
+    cond_label(item_cond_up(id, 0, upgraded), c0, sizeof(c0));
     snprintf(t, tl, "%s%s", d->name, upgraded ? " +" : "");
     if (d->slots > 1) {
         cond_label(d->cond[1], c1, sizeof(c1));

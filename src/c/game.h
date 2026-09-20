@@ -94,6 +94,12 @@ typedef struct {
 
 const ItemDef *item_def(uint8_t id);
 void item_effect_label(uint8_t id, char *out, size_t len);
+// The anvil improves a card, but not always the same way. A card with a window
+// ("3 or lower", "5 or higher") gets the WINDOW widened, which is worth far more
+// to it than a bigger number it can rarely fire. Everything else gets +1.
+bool item_upgrade_widens(uint8_t id);
+Cond item_cond_up(uint8_t id, uint8_t slot, bool upgraded);
+void item_upgrade_label(uint8_t id, char *out, size_t len);
 void item_effect_label_up(uint8_t id, bool upgraded, char *out, size_t len);
 uint8_t item_roll_for_floor(uint8_t depth);
 bool item_is_two_slot(uint8_t id);
