@@ -183,6 +183,18 @@ typedef struct { uint8_t kind; uint8_t arg; bool used; } Node;
 
 typedef enum { MODE_CAMPAIGN = 0, MODE_ENDLESS } GameMode;
 
+// Difficulty is a setting, but a run captures it at the start so that changing
+// it later cannot retroactively rewrite a run in progress.
+typedef enum { DIFF_NORMAL = 0, DIFF_EASY, DIFF_COUNT } Difficulty;
+
+uint8_t     difficulty_get(void);            // the current setting
+void        difficulty_set(uint8_t d);       // persisted
+const char *difficulty_name(uint8_t d);
+const char *difficulty_blurb(uint8_t d);
+int16_t     diff_enemy_hp(int16_t hp);       // applied to the enemy's health
+int16_t     diff_incoming(int16_t dmg);      // applied to damage the hero takes
+int16_t     diff_hero_hp(int16_t hp);        // applied to the hero's maximum
+
 typedef struct {
     bool     active;
     uint8_t  mode;          // GameMode
@@ -195,7 +207,9 @@ typedef struct {
     uint16_t gold;
     uint16_t limit_charge;
     bool     limit_ready;
-    bool     in_fight;      // set while a battle is open; see combat_window_push
+    bool     in_fight;      // a battle is open; see floor.c's resume handling
+    uint8_t  fight_node;    // which node that battle belongs to
+    uint8_t  difficulty;    // fixed for the whole run at run_new
 
     uint8_t  equip[MAX_EQUIP];
     uint8_t  equip_up;      // bitmask: which equipped cards the anvil improved

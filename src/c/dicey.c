@@ -477,7 +477,7 @@ static void campaign_window_push(void) {
 
 // --- title -----------------------------------------------------------------
 enum { ROW_CONTINUE = 0, ROW_CAMPAIGN, ROW_ENDLESS, ROW_SCORES,
-       ROW_ACHIEVE, ROW_SOUND, ROW_HOWTO, ROW_MAX };
+       ROW_ACHIEVE, ROW_DIFF, ROW_SOUND, ROW_HOWTO, ROW_MAX };
 
 static bool has_run(void) { return g_run.active; }
 static int  title_row_for(int row) { return has_run() ? row : row + 1; }
@@ -528,6 +528,10 @@ static void title_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *d
             snprintf(s, sizeof(s), "%d of %d", got, ACH_COUNT);
             break;
         }
+        case ROW_DIFF:
+            snprintf(t, sizeof(t), "Difficulty: %s", difficulty_name(difficulty_get()));
+            snprintf(s, sizeof(s), "%s", difficulty_blurb(difficulty_get()));
+            break;
         case ROW_SOUND:
             snprintf(t, sizeof(t), "Sound: %s", sound_enabled() ? "on" : "off");
             snprintf(s, sizeof(s), PBL_IF_ROUND_ELSE("No speaker on this watch",
@@ -548,6 +552,12 @@ static void title_select(MenuLayer *m, MenuIndex *idx, void *c) {
         case ROW_ENDLESS:  class_window_push(MODE_ENDLESS, 0); break;
         case ROW_SCORES:   scores_window_push(); break;
         case ROW_ACHIEVE:  achievements_window_push(); break;
+        case ROW_DIFF:
+            // Takes effect on the next run started; one already under way keeps
+            // the difficulty it began with.
+            difficulty_set((uint8_t)((difficulty_get() + 1) % DIFF_COUNT));
+            menu_layer_reload_data(s_title_menu);
+            break;
         case ROW_SOUND:
             sound_set_enabled(!sound_enabled());
             if (sound_enabled()) sound_play(SFX_LIMIT);

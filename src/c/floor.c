@@ -141,6 +141,14 @@ static void select_row(MenuLayer *m, MenuIndex *idx, void *c) {
         case NODE_ENEMY:
         case NODE_ELITE:
             if (n->used) { vibes_short_pulse(); return; }
+            // Holding BACK force-quits the app and the firmware will not let us
+            // catch it, so a fight can always be walked out of. Remember which
+            // one was open: on the way back in we drop straight into it again,
+            // at the health it started with, rather than letting the player out
+            // of a fight that was going badly.
+            g_run.in_fight = true;
+            g_run.fight_node = (uint8_t)idx->row;
+            save_run();
             combat_window_push(n->arg, n->kind == NODE_ELITE);
             break;
         case NODE_APPLE:
@@ -194,12 +202,27 @@ static void elimination_toll(void) {
 }
 
 static void window_appear(Window *window) {
+    // Walked out of a fight (or the watch died mid-fight): go straight back in.
+    if (g_run.active && g_run.in_fight && g_last_battle == BATTLE_NONE) {
+        uint8_t node = g_run.fight_node;
+        if (node < g_run.node_count &&
+            (g_run.nodes[node].kind == NODE_ENEMY || g_run.nodes[node].kind == NODE_ELITE) &&
+            !g_run.nodes[node].used) {
+            s_pending = (int8_t)node;
+            combat_window_push(g_run.nodes[node].arg, g_run.nodes[node].kind == NODE_ELITE);
+            return;
+        }
+        g_run.in_fight = false;   // node is gone or already beaten: let it go
+        save_run();
+    }
+
     // Deal with whatever happened in the fight we walked into.
     if (g_last_battle == BATTLE_WON && s_pending >= 0 && s_pending < g_run.node_count) {
         Node *n = &g_run.nodes[s_pending];
         n->used = true;
         g_run.foes_cleared++;
 
+        g_run.in_fight = false;
         bool was_boss = enemy_def(n->arg)->boss;
         // An elite is worth fighting because it always leaves something rare.
         if (n->kind == NODE_ELITE) {
@@ -220,6 +243,7 @@ static void window_appear(Window *window) {
             return;
         }
     } else if (g_last_battle == BATTLE_LOST) {
+        g_run.in_fight = false;
         if (g_run.mode == MODE_ENDLESS) progress_submit_score();
         g_run.active = false;
         clear_run();

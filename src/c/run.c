@@ -4,14 +4,57 @@ RunState g_run;
 BattleResult g_last_battle = BATTLE_NONE;
 
 #define PERSIST_KEY_RUN 100
+#define PERSIST_KEY_DIFF 121
 #define PERSIST_KEY_VER 101
-#define PERSIST_VERSION 5
+#define PERSIST_VERSION 6
 
 uint8_t warrior_dice_for_level(uint8_t level) {
     return class_dice_for_level(CLASS_WARRIOR, level);
 }
 
 uint8_t run_depth(void) { return g_run.floor; }
+
+// --- difficulty ------------------------------------------------------------
+// Easy softens the numbers and leaves every rule alone: the puzzle is the same
+// puzzle, there is just more room to get it wrong.
+// Tuned with tools/simulate.py. At 75/70/125 Easy won every boss fight in the
+// simulator even with a thin loadout, which is not a difficulty, it is a
+// cutscene. These numbers keep Easy very forgiving while leaving the final boss
+// able to beat a player who never improved their kit.
+static const int16_t s_enemy_hp_pct[DIFF_COUNT]  = { 100, 85 };
+static const int16_t s_incoming_pct[DIFF_COUNT]  = { 100, 80 };
+static const int16_t s_hero_hp_pct[DIFF_COUNT]   = { 100, 115 };
+
+uint8_t difficulty_get(void) {
+    if (!persist_exists(PERSIST_KEY_DIFF)) return DIFF_NORMAL;
+    int d = persist_read_int(PERSIST_KEY_DIFF);
+    return (d >= 0 && d < DIFF_COUNT) ? (uint8_t)d : DIFF_NORMAL;
+}
+
+void difficulty_set(uint8_t d) {
+    if (d >= DIFF_COUNT) d = DIFF_NORMAL;
+    persist_write_int(PERSIST_KEY_DIFF, d);
+}
+
+const char *difficulty_name(uint8_t d) {
+    return (d == DIFF_EASY) ? "Easy" : "Normal";
+}
+
+const char *difficulty_blurb(uint8_t d) {
+    return (d == DIFF_EASY) ? "Softer numbers, same rules"
+                            : "The game as intended";
+}
+
+static uint8_t run_diff(void) {
+    return (g_run.difficulty < DIFF_COUNT) ? g_run.difficulty : DIFF_NORMAL;
+}
+
+int16_t diff_enemy_hp(int16_t hp) { return (int16_t)((hp * s_enemy_hp_pct[run_diff()]) / 100); }
+int16_t diff_incoming(int16_t d)  {
+    int16_t v = (int16_t)((d * s_incoming_pct[run_diff()]) / 100);
+    return (d > 0 && v < 1) ? 1 : v;    // a hit always lands for something
+}
+int16_t diff_hero_hp(int16_t hp)  { return (int16_t)((hp * s_hero_hp_pct[run_diff()]) / 100); }
 
 // Four cards fit the grid at once, and seeing your whole hand is the puzzle, so
 // four is the default and the early game never asks you to scroll. The last two
@@ -30,11 +73,11 @@ int16_t run_enemy_hp(uint8_t enemy_id) {
     if (g_run.rule == RULE_HOARD || g_run.rule == RULE_BACKSTAGE) {
         base = (int16_t)((base * 160) / 100);
     }
-    if (g_run.mode != MODE_ENDLESS) return base;
+    if (g_run.mode != MODE_ENDLESS) return diff_enemy_hp(base);
     // +12% per floor, compounding gently rather than exponentially.
     int32_t hp = ((int32_t)base * (100 + 12 * g_run.floor)) / 100;
     if (hp > 900) hp = 900;
-    return (int16_t)hp;
+    return diff_enemy_hp((int16_t)hp);
 }
 
 uint8_t run_enemy_dice(uint8_t enemy_id) {
@@ -141,9 +184,10 @@ void run_new(GameMode mode, uint8_t campaign_level, uint8_t klass) {
     g_run.mode   = (uint8_t)mode;
     g_run.klass  = klass;
     g_run.campaign_level = campaign_level;
+    g_run.difficulty = difficulty_get();
     g_run.floor  = 1;
     g_run.level  = 1;
-    g_run.max_hp = class_def(klass)->base_hp;
+    g_run.max_hp = diff_hero_hp((int16_t)class_def(klass)->base_hp);
 
     for (int i = 0; i < MAX_EQUIP; i++)    g_run.equip[i] = ITEM_NONE;
     for (int i = 0; i < MAX_BACKPACK; i++) g_run.pack[i]  = ITEM_NONE;
@@ -166,7 +210,7 @@ void run_new(GameMode mode, uint8_t campaign_level, uint8_t klass) {
         run_set_upgraded(true, 1);
     }
     if (g_run.rule == RULE_SUDDEN) {
-        g_run.max_hp = (int16_t)(cd->base_hp / 2);
+        g_run.max_hp = diff_hero_hp((int16_t)(cd->base_hp / 2));
     }
 
     g_run.hp = g_run.max_hp;
@@ -215,8 +259,6 @@ bool load_run(void) {
     if (!persist_exists(PERSIST_KEY_RUN)) return false;
     if (persist_read_int(PERSIST_KEY_VER) != PERSIST_VERSION) return false;
     if (persist_read_data(PERSIST_KEY_RUN, &g_run, sizeof(g_run)) != (int)sizeof(g_run)) return false;
-    // Put down in the middle of a fight: the run does not survive that.
-    if (g_run.in_fight) { clear_run(); return false; }
     return g_run.active;
 }
 

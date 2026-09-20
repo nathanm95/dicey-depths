@@ -216,6 +216,7 @@ static bool can_place(const Card *c, const Die *die, const char **why) {
 // exactly how you charge it on purpose.
 static void deal_damage(Combatant *t, int16_t amount, bool pierce, bool is_hero) {
     if (amount <= 0) return;
+    if (is_hero) amount = diff_incoming(amount);   // Easy softens what lands on you
     if (!pierce && t->shield > 0) {
         int16_t soak = (t->shield >= amount) ? amount : t->shield;
         t->shield -= soak;
@@ -1624,13 +1625,7 @@ void combat_window_push(uint8_t enemy_id, bool elite) {
     if (rid) s_foe_bmp = gbitmap_create_with_resource(rid);
 
     s_hp_at_start = g_run.hp;
-    // Holding BACK force-quits the app, and the firmware will not let us catch
-    // it. Without this flag that is a free escape from a fight going badly:
-    // quit, relaunch, Continue, and the same fight starts again at the health
-    // you walked in with. Permadeath has to mean something, so a run that is
-    // put down in the middle of a fight does not get picked back up.
-    g_run.in_fight = true;
-    save_run();
+
     if (run_equip_slots() >= 6) ach_unlock(ACH_FULL_GRID);
     s_action_n = (uint8_t)(is_robot() ? 3 : 2);
     s_dice_n = is_robot() ? 0 : class_dice_for_level(g_run.klass, g_run.level);

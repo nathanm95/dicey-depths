@@ -312,6 +312,33 @@ a free retry that makes permadeath meaningless. `g_run.in_fight` is set and save
 battle opens and cleared when it ends; `load_run()` discards a run that was put down in the
 middle of one. Keep that flag if you touch combat's entry or exit.
 
+## Difficulty, and how it is tuned
+
+Normal and Easy, toggled on the title screen and persisted. Easy scales three numbers and
+changes **no rules** — enemy health 85%, damage reaching the hero 80%, hero maximum health
+115%. A run captures the setting at `run_new`, so changing it later cannot rewrite a run in
+progress.
+
+`tools/simulate.py` plays thousands of runs and reports win rates. It parses the **real**
+item, enemy and class tables out of the C source so its numbers cannot drift from the
+shipped ones, but it **re-implements** the combat rules rather than executing `combat.c`,
+which is bound to the Pebble APIs. Treat it as a tuning instrument, not proof, and confirm
+anything it flags by playing.
+
+Validate it before trusting it. Point it at a single fight whose outcome you know: a Warrior
+with the starting kit beats a Rat 100% of the time and a Slime ~95%, which matches play. If
+those move, the model has drifted, not the game.
+
+What it currently says, and has not yet been acted on:
+
+- The starting kit **cannot** beat any floor-3 boss — 0%. That is intended: you are meant to
+  improve your loadout. But the curve past it is a cliff rather than a slope. Against The
+  Drake a realistic floor-3 loadout wins ~2% and a good one ~98%, so the run is decided by
+  whether the loot cooperated rather than by how it was played. The Rat King is far gentler
+  (73% / 100%), so the five bosses are not on one curve.
+- Mid-tier regular enemies are harsh for a starting kit: Vacuum 4% and Knight 0% at two dice,
+  because Siphon heals what it takes and Hide shields every turn.
+
 ## Checking the tables
 
 `tools/check_data.py` validates the hand-written tables against the constants that index
