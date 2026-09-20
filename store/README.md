@@ -20,3 +20,17 @@ on the watch, so palette-crushing them would only throw away quality. That is wh
 `icon-small-80.png` is a LANCZOS reduction of the 144 so both read as the same
 artwork; 144 to 80 is a 1.8x step, which nearest-neighbour cannot do without
 tearing the pixel grid.
+
+## Screenshots and banner
+
+The upload form is strict about sizes — these are captured at **native resolution** and must
+not be upscaled:
+
+| Asset | Size | Where |
+|---|---|---|
+| Screenshots, Time 2 | 200x228 | `screenshots/emery/` |
+| Screenshots, Round 2 | 260x260 | `screenshots/gabbro/` |
+| Banner (optional, either platform) | 720x320 | `banner-720x320.png` |
+
+Five per platform: splash, title, class select, floor map, combat. The splash captures were
+brightened — the emulator renders unlit at about 39%, which is not how the watch looks.
