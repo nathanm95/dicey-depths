@@ -75,6 +75,117 @@
           "type": "bitmap",
           "name": "IMAGE_ENEMY_SNAIL",
           "file": "images/enemy_snail.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ENEMY_VACUUM",
+          "file": "images/enemy_vacuum.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ENEMY_IMP",
+          "file": "images/enemy_imp.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ENEMY_SPRITE",
+          "file": "images/enemy_sprite.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ENEMY_GHOST",
+          "file": "images/enemy_ghost.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ENEMY_TOAD",
+          "file": "images/enemy_toad.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ENEMY_COIL",
+          "file": "images/enemy_coil.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ENEMY_DOCTOR",
+          "file": "images/enemy_doctor.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ENEMY_RATKING",
+          "file": "images/enemy_ratking.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ENEMY_BANKER",
+          "file": "images/enemy_banker.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ENEMY_MIRROR",
+          "file": "images/enemy_mirror.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ENEMY_HOST",
+          "file": "images/enemy_host.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ICON_ENEMY",
+          "file": "images/icon_enemy.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ICON_ELITE",
+          "file": "images/icon_elite.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ICON_APPLE",
+          "file": "images/icon_apple.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ICON_CHEST",
+          "file": "images/icon_chest.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ICON_SHOP",
+          "file": "images/icon_shop.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ICON_ANVIL",
+          "file": "images/icon_anvil.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ICON_TRADE",
+          "file": "images/icon_trade.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_ICON_DOOR",
+          "file": "images/icon_door.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_CLASS_WARRIOR",
+          "file": "images/class_warrior.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_CLASS_ROBOT",
+          "file": "images/class_robot.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IMAGE_MENU_ICON",
+          "file": "images/menu_icon.png",
+          "menuIcon": true
         }
       ]
     }

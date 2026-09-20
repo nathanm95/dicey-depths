@@ -71,6 +71,17 @@ uint32_t portrait_resource_for(uint8_t shape) {
         case SHAPE_LANTERN: return RESOURCE_ID_IMAGE_ENEMY_LANTERN;
         case SHAPE_BOULDER: return RESOURCE_ID_IMAGE_ENEMY_BOULDER;
         case SHAPE_SNAIL:   return RESOURCE_ID_IMAGE_ENEMY_SNAIL;
+        case SHAPE_VACUUM:  return RESOURCE_ID_IMAGE_ENEMY_VACUUM;
+        case SHAPE_IMP:     return RESOURCE_ID_IMAGE_ENEMY_IMP;
+        case SHAPE_SPRITE:  return RESOURCE_ID_IMAGE_ENEMY_SPRITE;
+        case SHAPE_GHOST:   return RESOURCE_ID_IMAGE_ENEMY_GHOST;
+        case SHAPE_TOAD:    return RESOURCE_ID_IMAGE_ENEMY_TOAD;
+        case SHAPE_COIL:    return RESOURCE_ID_IMAGE_ENEMY_COIL;
+        case SHAPE_DOCTOR:  return RESOURCE_ID_IMAGE_ENEMY_DOCTOR;
+        case SHAPE_RATKING: return RESOURCE_ID_IMAGE_ENEMY_RATKING;
+        case SHAPE_BANKER:  return RESOURCE_ID_IMAGE_ENEMY_BANKER;
+        case SHAPE_MIRROR:  return RESOURCE_ID_IMAGE_ENEMY_MIRROR;
+        case SHAPE_HOST:    return RESOURCE_ID_IMAGE_ENEMY_HOST;
         default:           return 0;
     }
 }

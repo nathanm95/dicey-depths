@@ -18,7 +18,7 @@ static const ClassDef s_classes[CLASS_COUNT] = {
     },
     [CLASS_ROBOT] = {
         "Robot",
-        "No dice. Build each number - push for more, bust past six.",
+        "No dice. Build each number, or bust trying.",
         28,
         {0, 1, 7}, 3                  // Sword, Shield, Buckler
     },

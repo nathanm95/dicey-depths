@@ -339,6 +339,7 @@ void howto_window_push(void) {
 // a locked door; gate it behind a campaign clear later if that changes.
 static Window    *s_class_win;
 static MenuLayer *s_class_menu;
+static GBitmap   *s_class_pic[CLASS_COUNT];
 static uint8_t    s_pending_mode, s_pending_level;
 
 static uint16_t class_rows(MenuLayer *m, uint16_t s, void *c) { return CLASS_COUNT; }
@@ -348,11 +349,24 @@ static void class_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *d
     GRect r = ui_cell_inset(layer_get_bounds(cell));
     const ClassDef *cd = class_def((uint8_t)idx->row);
     bool hi = menu_cell_layer_is_highlighted(cell);
+
+    // Choosing a class from two lines of prose is a poor way to meet someone.
+    GBitmap *pic = (idx->row < CLASS_COUNT) ? s_class_pic[idx->row] : NULL;
+    int16_t tx = (int16_t)(r.origin.x + 4);
+    if (pic) {
+        GSize ps = gbitmap_get_bounds(pic).size;
+        graphics_context_set_compositing_mode(ctx, GCompOpSet);
+        graphics_draw_bitmap_in_rect(ctx, pic,
+            GRect(tx, (int16_t)(r.origin.y + 4), ps.w, ps.h));
+        graphics_context_set_compositing_mode(ctx, GCompOpAssign);
+        tx = (int16_t)(tx + ps.w + 4);
+    }
+    int16_t tw = (int16_t)(r.origin.x + r.size.w - tx - 4);
     ui_draw_text_c(ctx, cd->name, ui_font_small(),
-                   GRect(r.origin.x + 4, r.origin.y + 1, r.size.w - 8, 18),
+                   GRect(tx, r.origin.y + 1, tw, 18),
                    hi ? GColorWhite : COL_INK, GTextAlignmentLeft);
     ui_draw_text_c(ctx, cd->blurb, ui_font_tiny(),
-                   GRect(r.origin.x + 4, r.origin.y + 18, r.size.w - 8, 34),
+                   GRect(tx, r.origin.y + 18, tw, 38),
                    hi ? GColorWhite : COL_FRAME, GTextAlignmentLeft);
 }
 
@@ -364,6 +378,8 @@ static void class_select(MenuLayer *m, MenuIndex *idx, void *c) {
 }
 
 static void class_load(Window *window) {
+    s_class_pic[CLASS_WARRIOR] = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_CLASS_WARRIOR);
+    s_class_pic[CLASS_ROBOT]   = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_CLASS_ROBOT);
     Layer *root = window_get_root_layer(window);
     s_class_menu = menu_layer_create(layer_get_bounds(root));
     menu_layer_set_callbacks(s_class_menu, NULL, (MenuLayerCallbacks) {
@@ -376,6 +392,9 @@ static void class_load(Window *window) {
 }
 
 static void class_unload(Window *window) {
+    for (int i = 0; i < CLASS_COUNT; i++) {
+        if (s_class_pic[i]) { gbitmap_destroy(s_class_pic[i]); s_class_pic[i] = NULL; }
+    }
     menu_layer_destroy(s_class_menu);
     s_class_menu = NULL;
     window_destroy(s_class_win);

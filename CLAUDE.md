@@ -240,6 +240,18 @@ That produced 5-17 colours per sprite, binary alpha, under 1KB each. Ten enemies
 Dicey splash sprite cost about 11KB of the 256KB resource budget, so the rest of the roster
 is nothing.
 
+All 21 enemies now have sprites, so `portrait_draw()` in `portraits.c` is a fallback that
+nothing currently reaches — keep it anyway: it is what lets a new enemy be added and played
+before anyone draws it.
+
+The floor map passes an icon per node kind to `menu_cell_basic_draw` (`s_icons` in
+`floor.c`), and the class-select screen draws a portrait per class. Both are 32px or smaller.
+
+`menu_icon.png` (25x25) is the launcher icon, flagged `"menuIcon": true` — only one resource
+may claim that. It and `class_warrior.png` were **resized**, which interpolates and invents
+colours, so both were re-snapped onto the 64-colour palette afterwards. Any resize needs that
+step and then `tools/verify_art.py` to prove it.
+
 **`enemies.c` indices are load-bearing and easy to break.** `BOSS_FIRST` must equal the real
 array index of the first boss, and `s_items`-style `/*nn*/` comments are the only thing
 making that checkable by eye. Inserting enemies mid-table silently shifted every boss once

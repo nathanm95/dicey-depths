@@ -16,6 +16,28 @@ static Window    *s_window;
 static MenuLayer *s_menu;
 static int8_t     s_pending = -1;   // node we walked into, awaiting its result
 
+// One icon per node kind. Eight rows of near-identical text is hard to scan;
+// menu_cell_basic_draw takes an icon and we were passing NULL.
+static GBitmap *s_icons[NODE_TRADE + 1];
+
+static void icons_load(void) {
+    memset(s_icons, 0, sizeof(s_icons));
+    s_icons[NODE_ENEMY] = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_ICON_ENEMY);
+    s_icons[NODE_ELITE] = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_ICON_ELITE);
+    s_icons[NODE_APPLE] = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_ICON_APPLE);
+    s_icons[NODE_CHEST] = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_ICON_CHEST);
+    s_icons[NODE_SHOP]  = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_ICON_SHOP);
+    s_icons[NODE_ANVIL] = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_ICON_ANVIL);
+    s_icons[NODE_TRADE] = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_ICON_TRADE);
+    s_icons[NODE_DOOR]  = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_ICON_DOOR);
+}
+
+static void icons_unload(void) {
+    for (unsigned i = 0; i < sizeof(s_icons) / sizeof(s_icons[0]); i++) {
+        if (s_icons[i]) { gbitmap_destroy(s_icons[i]); s_icons[i] = NULL; }
+    }
+}
+
 static bool door_open(void) { return g_run.foes_cleared >= g_run.foes_required; }
 
 static void node_line(const Node *n, char *title, size_t tl, char *sub, size_t sl) {
@@ -103,8 +125,10 @@ static void draw_row(GContext *ctx, const Layer *cell, MenuIndex *idx, void *dat
         menu_cell_basic_draw(ctx, cell, title, sub, NULL);
         return;
     }
-    node_line(&g_run.nodes[idx->row], title, sizeof(title), sub, sizeof(sub));
-    menu_cell_basic_draw(ctx, cell, title, sub, NULL);
+    const Node *n = &g_run.nodes[idx->row];
+    node_line(n, title, sizeof(title), sub, sizeof(sub));
+    GBitmap *icon = (n->kind < sizeof(s_icons) / sizeof(s_icons[0])) ? s_icons[n->kind] : NULL;
+    menu_cell_basic_draw(ctx, cell, title, sub, icon);
 }
 
 static void select_row(MenuLayer *m, MenuIndex *idx, void *c) {
@@ -213,6 +237,7 @@ static void window_appear(Window *window) {
 }
 
 static void window_load(Window *window) {
+    icons_load();
     Layer *root = window_get_root_layer(window);
     s_menu = menu_layer_create(layer_get_bounds(root));
     menu_layer_set_callbacks(s_menu, NULL, (MenuLayerCallbacks) {
@@ -228,6 +253,7 @@ static void window_load(Window *window) {
 }
 
 static void window_unload(Window *window) {
+    icons_unload();
     menu_layer_destroy(s_menu);
     s_menu = NULL;
     window_destroy(s_window);
