@@ -16,6 +16,41 @@ static Window    *s_window;
 static MenuLayer *s_menu;
 static int8_t     s_pending = -1;   // node we walked into, awaiting its result
 
+// Pushing or removing a window from inside a window's own appear handler is
+// asking for trouble: the window is mid-transition and the stack is not in a
+// settled state. Everything this screen wants to do on appearing is therefore
+// recorded and performed a tick later, from a timer, with the transition over.
+typedef enum { FA_NONE = 0, FA_RESUME, FA_OVER_WON, FA_OVER_LOST, FA_LEAVE } FloorAction;
+static FloorAction s_after_appear;
+static AppTimer   *s_after_timer;
+
+static void after_appear(void *ctx) {
+    s_after_timer = NULL;
+    FloorAction a = s_after_appear;
+    s_after_appear = FA_NONE;
+    switch (a) {
+        case FA_RESUME: {
+            uint8_t node = g_run.fight_node;
+            if (node < g_run.node_count) {
+                s_pending = (int8_t)node;
+                combat_window_push(g_run.nodes[node].arg,
+                                   g_run.nodes[node].kind == NODE_ELITE);
+            }
+            break;
+        }
+        case FA_OVER_WON:  gameover_window_push(true);  break;
+        case FA_OVER_LOST: gameover_window_push(false); break;
+        case FA_LEAVE:     if (s_window) window_stack_remove(s_window, false); break;
+        default: break;
+    }
+}
+
+static void schedule_after_appear(FloorAction a) {
+    s_after_appear = a;
+    if (s_after_timer) app_timer_cancel(s_after_timer);
+    s_after_timer = app_timer_register(1, after_appear, NULL);
+}
+
 // One icon per node kind. Eight rows of near-identical text is hard to scan;
 // menu_cell_basic_draw takes an icon and we were passing NULL.
 static GBitmap *s_icons[NODE_TRADE + 1];
@@ -224,8 +259,7 @@ static void window_appear(Window *window) {
         if (node < g_run.node_count &&
             (g_run.nodes[node].kind == NODE_ENEMY || g_run.nodes[node].kind == NODE_ELITE) &&
             !g_run.nodes[node].used) {
-            s_pending = (int8_t)node;
-            combat_window_push(g_run.nodes[node].arg, g_run.nodes[node].kind == NODE_ELITE);
+            schedule_after_appear(FA_RESUME);
             return;
         }
         g_run.in_fight = false;   // node is gone or already beaten: let it go
@@ -255,7 +289,7 @@ static void window_appear(Window *window) {
             clear_run();
             g_last_battle = BATTLE_NONE;
             s_pending = -1;
-            gameover_window_push(true);
+            schedule_after_appear(FA_OVER_WON);
             return;
         }
     } else if (g_last_battle == BATTLE_LOST) {
@@ -265,14 +299,14 @@ static void window_appear(Window *window) {
         clear_run();
         g_last_battle = BATTLE_NONE;
         s_pending = -1;
-        gameover_window_push(false);
+        schedule_after_appear(FA_OVER_LOST);
         return;
     }
     g_last_battle = BATTLE_NONE;
     s_pending = -1;
 
     // The run ended while we were away — get off this screen.
-    if (!g_run.active) { window_stack_remove(s_window, false); return; }
+    if (!g_run.active) { schedule_after_appear(FA_LEAVE); return; }
     menu_layer_reload_data(s_menu);
 }
 
@@ -293,6 +327,8 @@ static void window_load(Window *window) {
 }
 
 static void window_unload(Window *window) {
+    if (s_after_timer) { app_timer_cancel(s_after_timer); s_after_timer = NULL; }
+    s_after_appear = FA_NONE;
     icons_unload();
     menu_layer_destroy(s_menu);
     s_menu = NULL;

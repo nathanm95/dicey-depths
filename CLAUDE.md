@@ -427,6 +427,21 @@ ps aux | grep -o "monitor tcp::[0-9]*"             # find the port
 
 `DD_BOOT_*` is read at **configure** time, so `pebble clean` is needed to change or clear it.
 
+**`pebble wipe` does not clear the app's saved run.** The persisted state lives in the
+emulator's flash image and survives both `wipe` and a reinstall, so a "fresh" emulator will
+happily show Continue from a run you thought you had thrown away. Delete the image instead —
+and mind the SDK version in the path, which is the *active* SDK, not whichever one is also
+installed:
+
+```bash
+pebble sdk list                    # which one is active
+rm -f ~/Library/Application\ Support/Pebble\ SDK/4.33.1/emery/qemu_spi_flash.bin
+pebble kill && pebble install --emulator emery
+```
+
+Deleting the 4.17 copy while 4.33.1 is active does nothing, and looks exactly like the wipe
+silently failing.
+
 Buttons: the QEMU monitor's `sendkey up|down <ms>` works; SELECT and BACK are still unmapped
 there and need `pebble emu-button --emulator <platform> click select|back`.
 
