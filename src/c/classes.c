@@ -14,14 +14,14 @@ static const ClassDef s_classes[CLASS_COUNT] = {
         "Warrior",
         "Rolls dice, and rerolls them. The place to start.",
         24,
-        {0, 1, ITEM_REROLL}, 3        // Sword, Shield, Reroll
+        {0, 1, ITEM_REROLL, 5}, 4     // Sword, Shield, Reroll, Bandage
     },
     [CLASS_ROBOT] = {
         "Robot",
         "No dice. Build each number, or bust trying.",
         24,      // same as the Warrior: the class difference is the CPU, not a
                  // bigger health bar on top of it
-        {0, 1, 7}, 3                  // Sword, Shield, Buckler
+        {0, 1, 7, 5}, 4               // Sword, Shield, Buckler, Bandage
     },
 };
 

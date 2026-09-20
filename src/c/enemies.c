@@ -34,11 +34,11 @@ static const EnemyDef s_enemies[] = {
   /*15*/ {"Snail",        34, 2, {28, 25},         2,  8, 4, 6, SHAPE_SNAIL,   false},
 
   // One boss per campaign level, themed to its ruleset.
-  /*16*/ {"The Rat King", 40, 3, {40, 23, 25},     3, 20, 3, 3, SHAPE_RATKING, true},
+  /*16*/ {"The Rat King", 32, 3, {40, 23, 25},     3, 20, 3, 3, SHAPE_RATKING, true},
   /*17*/ {"The Banker",   46, 3, {36, 23, 25},     3, 22, 3, 3, SHAPE_BANKER,  true},
   /*18*/ {"The Mirror",   44, 3, {37, 26, 25},     3, 24, 3, 3, SHAPE_MIRROR,  true},
   /*19*/ {"The Host",     50, 4, {38, 39, 23, 25}, 4, 26, 3, 3, SHAPE_HOST,    true},
-  /*20*/ {"The Drake",    58, 4, {34, 35, 27, 25}, 4, 30, 3, 3, SHAPE_DRAKE,   true},
+  /*20*/ {"The Drake",    50, 4, {34, 35, 27, 25}, 4, 30, 3, 3, SHAPE_DRAKE,   true},
 };
 
 #define ENEMY_TOTAL ((uint8_t)(sizeof(s_enemies) / sizeof(s_enemies[0])))

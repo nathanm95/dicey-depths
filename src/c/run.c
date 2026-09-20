@@ -14,6 +14,12 @@ uint8_t warrior_dice_for_level(uint8_t level) {
 
 uint8_t run_depth(void) { return g_run.floor; }
 
+uint8_t run_hero_dice(void) {
+    uint8_t d = class_dice_for_level(g_run.klass, g_run.level);
+    if (g_run.rule == RULE_SUDDEN) d++;        // the compensation for half health
+    return (d > MAX_DICE) ? MAX_DICE : d;
+}
+
 // --- difficulty ------------------------------------------------------------
 // Easy softens the numbers and leaves every rule alone: the puzzle is the same
 // puzzle, there is just more room to get it wrong.
@@ -21,9 +27,12 @@ uint8_t run_depth(void) { return g_run.floor; }
 // simulator even with a thin loadout, which is not a difficulty, it is a
 // cutscene. These numbers keep Easy very forgiving while leaving the final boss
 // able to beat a player who never improved their kit.
-static const int16_t s_enemy_hp_pct[DIFF_COUNT]  = { 100, 85, 125 };
-static const int16_t s_incoming_pct[DIFF_COUNT]  = { 100, 80, 125 };
-static const int16_t s_hero_hp_pct[DIFF_COUNT]   = { 100, 115, 90 };
+// Tuned with tools/simulate.py across both classes and all five episodes.
+// Easy is meant to be very hard to actually lose, so it is generous rather than
+// merely kind: at 85/80/115 it still lost runs.
+static const int16_t s_enemy_hp_pct[DIFF_COUNT]  = { 100, 55, 125 };
+static const int16_t s_incoming_pct[DIFF_COUNT]  = { 100, 45, 125 };
+static const int16_t s_hero_hp_pct[DIFF_COUNT]   = { 100, 160, 90 };
 
 static const char *s_curse_name[CURSE_COUNT] = {
     "", "Fever", "Toxic Air", "Crowded", "Brittle", "Lean Pickings", "Static"
@@ -239,7 +248,9 @@ void run_new(GameMode mode, uint8_t campaign_level, uint8_t klass) {
         run_set_upgraded(true, 1);
     }
     if (g_run.rule == RULE_SUDDEN) {
-        g_run.max_hp = diff_hero_hp((int16_t)(cd->base_hp / 2));
+        // Less health, but an extra die to spend: the rule has to give
+        // something back or it is just a shorter run.
+        g_run.max_hp = diff_hero_hp((int16_t)((cd->base_hp * 75) / 100));
     }
 
     g_run.hp = g_run.max_hp;

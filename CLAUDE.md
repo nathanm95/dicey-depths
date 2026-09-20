@@ -352,25 +352,41 @@ Two things it found that WERE acted on:
   two and the run was decided long before the boss. The floor is three now: 6% to 22% on
   Normal, 27% to 49% on Easy.
 
-What it currently says, and has NOT been acted on, because which way to move it is a design
-decision rather than a bug:
+Tuned across **both classes, all five episodes and all three difficulties** (`simulate.py`
+with no arguments prints that grid). The targets were: Easy should be very hard to actually
+lose, Normal should be completable by most people, Hard may be brutal so long as it is
+possible.
 
-- The starting kit **cannot** beat any floor-3 boss — 0%. That is intended: you are meant to
-  improve your loadout. But the curve past it is a cliff rather than a slope. Against The
-  Drake a realistic floor-3 loadout wins ~2% and a good one ~98%, so the run is decided by
-  whether the loot cooperated rather than by how it was played. The Rat King is far gentler
-  (73% / 100%), so the five bosses are not on one curve.
-- Mid-tier regular enemies are harsh for a starting kit: Vacuum 4% and Knight 0% at two dice,
-  because Siphon heals what it takes and Hide shields every turn.
-- The campaign curve is not monotonic. On Normal: 44% / 91% / 49% / 22% / 4%. Curse of Greed
-  is the second episode and by far the easiest, because its upgraded opening kit outweighs
-  its curse; Sudden Death at 4% is the steepest thing in the game.
-- Endless still favours the Robot heavily (median 19 floors against the Warrior's 3 on
-  Normal), and Warrior on Hard dies on the first floor more often than not.
+|              | Easy    | Normal    | Hard     |
+|--------------|---------|-----------|----------|
+| Warrior      | 96-100% | 56-95%    | 4-42%    |
+| Robot        | 93-100% | 66-98%    | 23-67%   |
 
-**Validate the simulator before believing a number from it.** Its win rates moved from
-"everything is unwinnable" to plausible once it learned to swap better cards in from the
-backpack — a policy gap, not a game problem. A four-card starting kit scoring 0% was the tell.
+Two traps this exercise walked into, both worth remembering:
+
+- **A turn cap counted long fights as losses.** At 40 turns, Easy reported 15% losses while
+  the simulated player had died exactly *zero* times in 1,476 fights — every one was a
+  stalemate. Any headline number from this tool should be checked against how runs actually
+  end before it is believed.
+- **The simulator's kit must match the game's.** It was quietly giving the player a fourth
+  starting card the game did not, which made everything look winnable that was not.
+
+What the numbers changed, and why:
+
+- Easy is 55/45/160, not the 85/80/115 it started at, because that still lost runs.
+- The **Elimination Round's card floor scales with difficulty** (5/4/3). No health multiplier
+  can give a card back, so this is the only way that rule can be gentle on Easy.
+- **Sudden Death gives an extra die** and takes 25% of health rather than 50%. A rule that
+  only subtracts is a shorter run, not a different one; it went from 15% to 56% on Normal.
+- Elite health 160% to 130%, The Drake 58 to 50, The Rat King 40 to 32. The Rat King is the
+  *first* boss and was the hardest thing in the campaign for a four-card kit, which made the
+  tutorial episode the hardest one to clear.
+- The Reroll card allows one use per die rather than one per die minus one — the Warrior
+  needed it to keep pace with a class that never rolls badly.
+
+Still open: the Robot out-performs the Warrior everywhere (69% against 59% on Normal's first
+episode, and much wider on Hard). Its built numbers average 4.65 against a die's 3.50, and
+the Reroll card does not fully close that.
 
 ## Checking the tables
 

@@ -14,7 +14,7 @@
 // every status effect attacking the roll instead of the health bar.
 // ---------------------------------------------------------------------------
 
-#define MAX_DICE        4
+#define MAX_DICE        5   // Sudden Death hands out a fifth
 #define MAX_SLOTS       2   // slots on one piece of equipment
 #define MAX_EQUIP       6   // hard ceiling; how many are UNLOCKED varies, see
                             // run_equip_slots(). Four fit the grid without
@@ -137,12 +137,13 @@ typedef struct {
     const char *name;
     const char *blurb;
     uint8_t     base_hp;
-    uint8_t     kit[3];
+    uint8_t     kit[4];
     uint8_t     kit_n;
 } ClassDef;
 
 const ClassDef *class_def(uint8_t id);
 uint8_t class_dice_for_level(uint8_t klass, uint8_t level);
+uint8_t run_hero_dice(void);      // class curve plus any ruleset bonus
 
 // The Robot's CPU: PUSH adds this much, and going past CPU_BUST loses the lot.
 // The step range matters more than it looks. At 1-3 the Robot can always reach
@@ -263,7 +264,7 @@ void    run_set_upgraded(bool equipped, int index);
 int16_t run_enemy_hp(uint8_t enemy_id);   // endless scaling folded in
 uint8_t run_enemy_dice(uint8_t enemy_id);
 // An elite is the same creature, tougher, and worth more.
-#define ELITE_HP_PCT   160
+#define ELITE_HP_PCT   130
 #define ELITE_GOLD_MUL   2
 
 void    save_run(void);

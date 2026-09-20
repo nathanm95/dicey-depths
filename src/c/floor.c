@@ -199,10 +199,13 @@ static void select_row(MenuLayer *m, MenuIndex *idx, void *c) {
 static void elimination_toll(void) {
     int owned[MAX_EQUIP], n = 0;
     for (int i = 0; i < MAX_EQUIP; i++) if (g_run.equip[i] != ITEM_NONE) owned[n++] = i;
-    // Never below three. Losing a card after every fight is the rule; being
-    // stripped to a single card by floor two is a death spiral, and the run is
-    // decided long before you reach the boss.
-    if (n <= 3) return;
+    // Losing a card after every fight is the rule; being stripped bare by floor
+    // two is a death spiral. How far it can strip you scales with difficulty,
+    // which is the only way this rule can be made gentle on Easy — no health
+    // multiplier can give a card back.
+    static const int floor_by_diff[DIFF_COUNT] = { 4, 5, 3 };
+    uint8_t d = (g_run.difficulty < DIFF_COUNT) ? g_run.difficulty : DIFF_NORMAL;
+    if (n <= floor_by_diff[d]) return;
     int pick = owned[rand() % n];
     g_run.equip[pick] = ITEM_NONE;
     g_run.equip_up &= (uint8_t)~(1 << pick);

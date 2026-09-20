@@ -388,7 +388,7 @@ static void roll_side(bool hero) {
     bool robot = hero && is_robot();
     if (robot) {
         s_dice_n = 0;
-        s_builds_left = class_dice_for_level(g_run.klass, g_run.level);
+        s_builds_left = run_hero_dice();
         s_cpu = 0;
         s_cpu_live = false;
         s_pending_frozen = 0;
@@ -412,8 +412,9 @@ static void roll_side(bool hero) {
         // More dice means more chances to fix one: the Reroll card's allowance
         // is refilled every turn from the size of your handful.
         if (item_is_reroll(cards[i].id)) {
-            uint8_t allow = (uint8_t)(n > 1 ? n - 1 : 1);
-            cards[i].uses_left = allow;
+            // One reroll per die, not per die minus one: the Warrior needed the
+            // help to keep pace with a class that never rolls badly.
+            cards[i].uses_left = (uint8_t)(n > 0 ? n : 1);
         }
     }
     if (hero) tw_start(&s_roll, 700);
@@ -1631,8 +1632,8 @@ void combat_window_push(uint8_t enemy_id, bool elite) {
 
     if (run_equip_slots() >= 6) ach_unlock(ACH_FULL_GRID);
     s_action_n = (uint8_t)(is_robot() ? 3 : 2);
-    s_dice_n = is_robot() ? 0 : class_dice_for_level(g_run.klass, g_run.level);
-    s_builds_left = is_robot() ? class_dice_for_level(g_run.klass, g_run.level) : 0;
+    s_dice_n = is_robot() ? 0 : run_hero_dice();
+    s_builds_left = is_robot() ? run_hero_dice() : 0;
     s_cpu = 0;
     s_cpu_live = false;
     s_pending_frozen = 0;

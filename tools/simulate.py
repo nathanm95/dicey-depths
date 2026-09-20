@@ -92,8 +92,14 @@ def parse_loot():
 ITEMS, ENEMIES, LOOT = parse_items(), parse_enemies(), parse_loot()
 BOSS_FIRST = int(re.search(r"#define BOSS_FIRST (\d+)", src("enemies.c")).group(1))
 ITEM_REROLL = int(re.search(r"#define ITEM_REROLL\s+(\d+)", src("game.h")).group(1))
+ELITE_PCT = 130
+SUDDEN_PCT = 75
+SUDDEN_DIE = 1
+ELIM_FLOOR = {'Easy':5,'Normal':4,'Hard':3}
+REROLL_BONUS = 1
+DRAKE_HP = 50
 DIFF = {"Normal": dict(ehp=100, inc=100, hhp=100),
-        "Easy": dict(ehp=85, inc=80, hhp=115),
+        "Easy": dict(ehp=55, inc=45, hhp=160),
         "Hard": dict(ehp=125, inc=125, hhp=90)}
 
 def accepts(c, pips):
@@ -164,7 +170,7 @@ def take_turn(me, foe, robot, inc_pct, rule=0):
     for c in me.cards:
         c["spent"]=False; c["disabled"]=False; c["weak"]=False
         if ITEMS[c["id"]]["eff"][0][0]==EFF["EFF_REROLL"]:
-            c["uses"]=max(1, me.dice_n-1)
+            c["uses"]=max(1, me.dice_n-1+REROLL_BONUS)
     # statuses land on the roll
     if robot:
         dice=[]
@@ -221,6 +227,21 @@ def take_turn(me, foe, robot, inc_pct, rule=0):
                         if b==a or used[b] or not accepts(it["cond"][1], dice[b]): continue
                         sc=score(c, dice[a]+dice[b], me)
                         if best is None or sc>best[0]: best=(sc,[a,b],c)
+        # Before committing, upgrade a dud: a 1 or 2 with a reroll spare and
+        # another die to feed it is nearly always worth improving.
+        if best and best[0] <= 2:
+            rc=None
+            for c2 in me.cards:
+                if (ITEMS[c2["id"]]["eff"][0][0]==EFF["EFF_REROLL"]
+                        and c2["uses"]>0 and not c2["disabled"]):
+                    rc=c2; break
+            spare=[i for i,_ in enumerate(dice) if not used[i]]
+            if rc and len(spare)>=2:
+                spare.sort(key=lambda i: dice[i])
+                used[spare[0]]=True
+                dice[spare[1]]=random.randint(1,6)
+                rc["uses"]-=1
+                continue
         if best:
             _,dis,c = best
             total=sum(dice[i] for i in dis)
@@ -229,15 +250,18 @@ def take_turn(me, foe, robot, inc_pct, rule=0):
             if foe.hp<=0: return
             continue
 
-        # Nothing placeable. The Warrior's whole class feature is turning a dead
-        # die into a live one, so try that before giving up the turn.
+        # Nothing worth placing. The Warrior's whole feature is turning a poor
+        # die into a better one, so spend a reroll on the worst spare before
+        # giving the turn up.
         rc=None
         for c in me.cards:
             if ITEMS[c["id"]]["eff"][0][0]==EFF["EFF_REROLL"] and c["uses"]>0 and not c["disabled"]:
                 rc=c; break
         spare=[i for i,_ in enumerate(dice) if not used[i]]
         if rc and len(spare)>=2:
-            feed=spare[0]; target=spare[1]
+            spare.sort(key=lambda i: dice[i])
+            feed=spare[0]; target=spare[1] if dice[spare[1]]<=2 else spare[0]
+            if target==feed and len(spare)>1: target=spare[1]
             used[feed]=True
             dice[target]=random.randint(1,6)
             rc["uses"]-=1
@@ -248,15 +272,19 @@ def fight(hero_cards, hero_hp, hero_max, dice, enemy, diff, robot, elite, rule=0
     inc = DIFF[diff]["inc"]
     hero=Side(hero_max,hero_cards,dice); hero.hp=hero_hp; hero.is_hero=True
     ehp = enemy["hp"]*DIFF[diff]["ehp"]//100
-    if elite: ehp = ehp*160//100
+    if elite: ehp = ehp*ELITE_PCT//100
     foe=Side(ehp, mkcards(enemy["equip"]), enemy["dice"]+(1 if elite else 0))
     foe.is_hero=False
-    for _ in range(40):
+    # A generous cap: a real fight that has not resolved in 120 turns is a
+    # genuine stalemate, not a slow win. Counting a long fight as a LOSS was
+    # quietly inventing defeats - on Easy it reported 15% losses where the
+    # simulated player had died exactly zero times.
+    for _ in range(120):
         take_turn(hero, foe, robot, inc, rule)
         if foe.hp<=0: return True, hero.hp, hero.charge, hero.limit
         take_turn(foe, hero, False, inc, 0)
         if hero.hp<=0: return False, 0, 0, False
-    return False, hero.hp, hero.charge, hero.limit   # stalemate counts as a loss
+    return False, hero.hp, hero.charge, hero.limit   # true stalemate
 
 # ---------------------------------------------------------------- run
 # Probability a random die satisfies a slot, used to value fussy cards honestly.
@@ -313,9 +341,11 @@ def play_run(klass, level, diff):
     pool = list(ids)                                       # everything owned
     for floor in (1,2,3):
         dice = 2 if floor==1 else (3 if floor==2 else 4)
+        if rule == 4: dice += SUDDEN_DIE
         if floor==3:
             hp = min(max_hp, hp+8)
-            boss = ENEMIES[BOSS_FIRST+rule]
+            boss = dict(ENEMIES[BOSS_FIRST+rule])
+            if DRAKE_HP and boss['name']=='The Drake': boss['hp']=DRAKE_HP
             won,hp,_,_ = fight(mkcards(ids,upg), hp, max_hp, dice, boss,
                                diff, robot, False, rule)
             return won
@@ -327,13 +357,15 @@ def play_run(klass, level, diff):
                                diff, robot, elite, rule)
             if not won: return False
             gold += e["gold"]*(2 if elite else 1)*(2 if rule==4 else 1)
-            if rule == 3 and len(pool) > 3:                # Elimination Round
+            if rule == 3 and len(pool) > ELIM_FLOOR[diff]:   # Elimination Round
                 drop = random.choice(ids) if ids else pool[0]
                 if drop in pool: pool.remove(drop)
                 ids = best_loadout(pool, slots)
         hp = min(max_hp, hp+8)
         pool.append(loot_for(floor))                       # chest
-        if gold>=14: pool.append(loot_for(floor)); gold-=14  # shop
+        for _ in range(3):                                 # a shop stocks three
+            if gold < 14: break
+            pool.append(loot_for(floor)); gold -= 14
         ids = best_loadout(pool, slots)
         if floor>=2 and ids: upg.add(0)                    # anvil
         max_hp += 4; hp = max_hp
@@ -363,7 +395,9 @@ def play_endless(klass, diff, cap=40):
             gold += e["gold"]
         hp = min(max_hp, hp+8)
         pool.append(loot_for(min(floor,3)))
-        if gold>=14: pool.append(loot_for(min(floor,3))); gold-=14
+        for _ in range(3):
+            if gold < 14: break
+            pool.append(loot_for(min(floor,3))); gold -= 14
         ids = best_loadout(pool, slots)
         if ids: upg.add(0)
         max_hp += 4; hp = max_hp
@@ -382,21 +416,15 @@ if len(sys.argv)>1 and sys.argv[1]=="endless":
     sys.exit(0)
 
 N = int(sys.argv[1]) if len(sys.argv)>1 else 2000
-print("%-22s %-8s %-8s" % ("campaign level", "Normal", "Easy"))
-print("-"*40)
 names = ["Opening Round","Curse of Greed","Parallel Universe","Elimination","Sudden Death"]
-for lvl in range(1,6):
-    row=[]
-    for diff in ("Normal","Easy"):
-        wins=sum(play_run("Warrior",lvl,diff) for _ in range(N))
-        row.append("%5.1f%%" % (100.0*wins/N))
-    print("%-22s %-8s %-8s" % ("%d. %s"%(lvl,names[lvl-1]), row[0], row[1]))
-print()
-print("%-22s %-8s %-8s" % ("Robot", "Normal", "Easy"))
-print("-"*40)
-for lvl in range(1,6):
-    row=[]
-    for diff in ("Normal","Easy"):
-        wins=sum(play_run("Robot",lvl,diff) for _ in range(N))
-        row.append("%5.1f%%" % (100.0*wins/N))
-    print("%-22s %-8s %-8s" % ("%d. %s"%(lvl,names[lvl-1]), row[0], row[1]))
+DIFFS = ("Easy","Normal","Hard")
+for klass in ("Warrior","Robot"):
+    print("%-22s %s" % (klass, "  ".join("%-7s"%d for d in DIFFS)))
+    print("-"*46)
+    for lvl in range(1,6):
+        row=[]
+        for diff in DIFFS:
+            wins=sum(play_run(klass,lvl,diff) for _ in range(N))
+            row.append("%5.1f%%" % (100.0*wins/N))
+        print("%-22s %s" % ("%d. %s"%(lvl,names[lvl-1]), "  ".join("%-7s"%r for r in row)))
+    print()
