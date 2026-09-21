@@ -480,3 +480,30 @@ flow, because each one leaves combat differently:
 
     boss win (Warrior, emery)   boss win (Robot, emery)   boss win (gabbro)
     ordinary loss (campaign)    death in Endless (submits a score)
+
+## What the "app exits to the home screen" bug actually was
+
+Three fixes were made for one report, and only one of them was ever shown to
+cause it. Recorded here because two of the three commit messages overclaim.
+
+  * **Overlapping `speaker_play_notes` killed the qemu process**, not the app.
+    pebble-tool then respawned a bare emulator, which is why the screen read
+    "Install an app to continue" and why the logs were empty. This is the only
+    cause with a clean bisect behind it.
+  * **The death-animation rotation was removed on a misattribution.** Put back
+    behind a flag afterwards, with sound gone, the app reached the WINNER
+    screen on both emery and gabbro with the qemu pid unchanged. It is still
+    slow and still not worth having, but it was not killing anything.
+  * **Pushing a window from inside an `appear` handler was never reproduced.**
+    Removed as a genuine hazard, not as a diagnosed fault.
+
+Diagnostic rule that follows from this: **compare the qemu pid before and
+after**. A different pid means the emulator died and the app is not the
+suspect. `pgrep -f qemu-pebble | wc -l` does NOT work for this -- it matches
+the driving shell script too, and reported a phantom second instance for an
+entire session.
+
+Memory was measured and ruled out: 75,548 bytes free at the title, unchanged
+to the byte after 25 window open/close cycles, and 168 bytes lower after a
+full floor + fight + results cycle (saved progress, not a leak). Build with
+`DD_HEAP=1` to put `heap_bytes_free()` on the title screen.

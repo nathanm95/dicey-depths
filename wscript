@@ -33,6 +33,10 @@ def configure(ctx):
     # screen in one turn rather than sixteen rounds of blind button presses.
     # 1 = the hero one-shots anything and cannot die (the WIN path);
     # 2 = the hero dies to the first hit the enemy lands (the LOSE path).
+    if os.environ.get('DD_HEAP'):
+        for env in ctx.all_envs.values():
+            env.append_value('DEFINES', ['DD_HEAP=1'])
+
     if os.environ.get('DD_ONESHOT'):
         for env in ctx.all_envs.values():
             env.append_value('DEFINES', ['DD_ONESHOT=' + os.environ['DD_ONESHOT']])

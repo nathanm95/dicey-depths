@@ -498,7 +498,15 @@ static int16_t title_hh(MenuLayer *m, uint16_t s, void *c) { return 40; }
 
 static void title_header(GContext *ctx, const Layer *cell, uint16_t section, void *data) {
     GRect r = ui_cell_inset(layer_get_bounds(cell));
-    ui_draw_text_c(ctx, "DICEY DEPTHS", ui_font_title(),
+    const char *label = "DICEY DEPTHS";
+#ifdef DD_HEAP
+    // Debug only: free heap on the title, so a fight can be measured by the
+    // number before entering it and the number after coming back.
+    static char hb[24];
+    snprintf(hb, sizeof(hb), "HEAP %u", (unsigned)heap_bytes_free());
+    label = hb;
+#endif
+    ui_draw_text_c(ctx, label, ui_font_title(),
                    GRect(r.origin.x + 2, r.origin.y + 2, r.size.w - 4, 30), COL_INK, GTextAlignmentCenter);
 }
 
