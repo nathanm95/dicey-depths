@@ -606,7 +606,10 @@ int main(void) {
     splash_window_push();   // sits on top of the title and gets out of the way
 
 #ifdef DD_BOOT_FLOOR
-    run_new(MODE_CAMPAIGN, 0, DD_BOOT_CLASS);
+#ifndef DD_BOOT_MODE
+#define DD_BOOT_MODE 0
+#endif
+    run_new((GameMode)DD_BOOT_MODE, 0, DD_BOOT_CLASS);
     g_run.floor = DD_BOOT_FLOOR;
     g_run.level = DD_BOOT_FLOOR;
     g_run.max_hp = (int16_t)(g_run.max_hp + 30);

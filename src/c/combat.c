@@ -608,6 +608,28 @@ static void check_end(void) {
     }
 }
 
+#if DD_ONESHOT
+// Debug only. Driving a whole fight through the emulator's buttons takes
+// sixteen rounds of blind presses and does not work at all for the Robot,
+// whose turn is push/bank rather than place-a-die. This ends the fight on a
+// timer instead, so a crash test reaches the win or lose screen the same way
+// for every class. DD_ONESHOT=1 wins, 2 loses. Never set in a release build.
+static void dd_oneshot_fire(void *ctx) {
+    if (s_phase == PHASE_OVER) return;
+#if DD_ONESHOT == 2
+    s_hero.hp = 0;
+#else
+    s_foe.hp = 0;
+#endif
+    check_end();
+    redraw();
+}
+
+static void dd_oneshot_arm(void) {
+    app_timer_register(1500, dd_oneshot_fire, NULL);
+}
+#endif
+
 // --- player actions --------------------------------------------------------
 static bool any_die_free(void) {
     for (int i = 0; i < s_dice_n; i++) if (!s_dice[i].used) return true;
@@ -1596,6 +1618,9 @@ void combat_window_push(uint8_t enemy_id, bool elite) {
     s_foe.max_hp = run_enemy_hp(enemy_id);
     if (s_elite) s_foe.max_hp = (int16_t)((s_foe.max_hp * ELITE_HP_PCT) / 100);
     s_foe.hp = s_foe.max_hp;
+#if DD_ONESHOT
+    dd_oneshot_arm();   // debug only: end this fight on a timer -- see wscript
+#endif
     s_foe_ghost = s_foe.hp;
     s_hero_ghost = s_hero.hp;
 

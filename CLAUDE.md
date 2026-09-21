@@ -459,3 +459,24 @@ there and need `pebble emu-button --emulator <platform> click select|back`.
 
 Inspired by *Dicey Dungeons* by Terry Cavanagh, with art by Marlowe Dobbe and music by
 Chipzel. This is an original implementation — no code or assets came from that game.
+
+## Ending a fight quickly in a test
+
+Driving a fight through the emulator's buttons takes sixteen rounds of blind
+presses, and it does not work at all for the Robot, whose turn is push/bank
+rather than place-a-die. `DD_ONESHOT` ends the fight on a 1.5s timer instead,
+so a crash test reaches the end-of-fight screen the same way for every class:
+
+    DD_ONESHOT=1   the hero wins
+    DD_ONESHOT=2   the hero dies
+    DD_BOOT_MODE=1 run the boot-straight-in run as Endless rather than Campaign
+
+Combine with `DD_BOOT_FLOOR=3` to land on the boss floor. All of these are
+compile-time, read from the environment by `wscript`, and absent from a release
+build -- check with `strings build/<plat>/pebble-app.bin | grep -i oneshot`.
+
+The five end-of-fight paths worth re-testing after any change to the window
+flow, because each one leaves combat differently:
+
+    boss win (Warrior, emery)   boss win (Robot, emery)   boss win (gabbro)
+    ordinary loss (campaign)    death in Endless (submits a score)

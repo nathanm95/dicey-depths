@@ -26,7 +26,16 @@ def configure(ctx):
     if os.environ.get('DD_BOOT_FLOOR'):
         for env in ctx.all_envs.values():
             env.append_value('DEFINES', ['DD_BOOT_FLOOR=' + os.environ['DD_BOOT_FLOOR'],
-                                         'DD_BOOT_CLASS=' + os.environ.get('DD_BOOT_CLASS', '0')])
+                                         'DD_BOOT_CLASS=' + os.environ.get('DD_BOOT_CLASS', '0'),
+                                         'DD_BOOT_MODE=' + os.environ.get('DD_BOOT_MODE', '0')])
+
+    # DD_ONESHOT gives one side 1 HP so a crash test reaches an end-of-fight
+    # screen in one turn rather than sixteen rounds of blind button presses.
+    # 1 = the hero one-shots anything and cannot die (the WIN path);
+    # 2 = the hero dies to the first hit the enemy lands (the LOSE path).
+    if os.environ.get('DD_ONESHOT'):
+        for env in ctx.all_envs.values():
+            env.append_value('DEFINES', ['DD_ONESHOT=' + os.environ['DD_ONESHOT']])
 
     if os.environ.get('DD_BOOT_COMBAT'):
         enemy = os.environ.get('DD_BOOT_ENEMY', '0')
