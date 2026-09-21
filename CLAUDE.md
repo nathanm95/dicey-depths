@@ -190,34 +190,24 @@ Frozen and Burn queue in `s_pending_*` and land on the next number it banks.
   episodes are cleared (`bonus_rounds_unlocked()`). Endless deliberately rotates only the
   campaign five — the Bonus Rounds are a reward, not a random ambush.
 
-## Sound
+## There is no sound, and that was a decision
 
-`speaker_play_notes` takes MIDI notes and square/triangle/sawtooth waveforms — a Game Boy in
-all but name, which suits a game whose inspiration had its music written on one.
+There was a chiptune module. It is gone.
 
-**Only Time 2 has a speaker. Round 2 has none.** The API is declared on both platforms, so
-no `#ifdef` is needed: the calls are simply silent on gabbro. The consequence for design is
-firm — **nothing in `sound.c` may carry information that is not already on screen**, because
-half the players will never hear any of it.
+Unfixed, it took the **qemu process** down mid-fight — not the app, the emulator — and
+pebble-tool then respawned a fresh one with no app on it, so the watch came back showing
+"Install an app to continue" and nothing appeared in the logs. Four cards firing in one turn
+meant four `speaker_play_notes()` calls inside a tenth of a second, each interrupting the
+last. It also simply sounded wrong, for the same reason.
 
-The on/off toggle lives on the title screen and persists (`PERSIST_KEY_SOUND`).
-`sound_play()` also respects `speaker_is_muted()`, so the watch's own setting wins.
+Rate limiting it did appear to hold. It was removed anyway, on the grounds that a feature
+that can take the emulator down is not worth the risk for a game whose feedback is already
+carried entirely by the screen and the vibration motor — and Round 2 has no speaker at all,
+so half the players were never going to hear it.
 
-### Never start a sound while one is playing
-
-Two overlapping `speaker_play_notes()` calls **kill the whole qemu process**. Not the app —
-the emulator. The symptom is baffling: the watch comes back showing "Install an app to
-continue", because pebble-tool silently respawns a fresh emulator with no app on it, so it
-looks nothing like a crash and nothing appears in the logs.
-
-It was reproducible on winning the first fight, where `SFX_WIN` and the first-win
-achievement's `SFX_LIMIT` fired within microseconds of each other. `sound_play()` now calls
-`speaker_stop()` first, and `ach_unlock()` is deliberately silent — an achievement nearly
-always lands at the same moment as something else that makes a noise.
-
-If the emulator ever "uninstalls itself", check `ps -o pid,etime` on `qemu-pebble` first: a
-process younger than your session means it restarted, and that points at the emulator dying
-rather than at your app.
+If it is ever restored: never interrupt a playing sequence, gate new sounds on the duration
+of the one already playing, and remember that `emery` is the only target with
+`-audio driver=coreaudio` on its qemu command line.
 
 ## Round displays slice text, and it is never obvious in the emulator screenshot
 

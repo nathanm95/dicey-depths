@@ -3,7 +3,6 @@
 #include "anim.h"
 #include "portraits.h"
 #include "combat.h"
-#include "sound.h"
 #include "achieve.h"
 
 // ---------------------------------------------------------------------------
@@ -234,13 +233,11 @@ static void deal_damage(Combatant *t, int16_t amount, bool pierce, bool is_hero)
 
     if (is_hero) {
         tw_start(&s_hero_hit, 420);
-        sound_play(SFX_HURT);
         float_spawn(GPoint(s_L.hero_strip.origin.x + 30, s_L.hero_strip.origin.y), amount, COL_BAD);
         g_run.limit_charge += amount;
         if (!g_run.limit_ready && g_run.limit_charge >= (uint16_t)g_run.max_hp) {
             g_run.limit_ready = true;
             g_run.limit_charge = (uint16_t)g_run.max_hp;
-            sound_play(SFX_LIMIT);
             toast("LIMIT BREAK ready");
         }
     } else {
@@ -255,8 +252,7 @@ static void heal_up(Combatant *t, int16_t amount, bool is_hero) {
     if (amount <= 0) return;
     t->hp += amount;
     if (t->hp > t->max_hp) t->hp = t->max_hp;
-    if (is_hero) sound_play(SFX_HEAL);
-    float_spawn(is_hero ? GPoint(s_L.hero_strip.origin.x + 30, s_L.hero_strip.origin.y)
+    if (is_hero)    float_spawn(is_hero ? GPoint(s_L.hero_strip.origin.x + 30, s_L.hero_strip.origin.y)
                         : GPoint(s_L.portrait.origin.x + s_L.portrait.size.w / 2,
                                  s_L.portrait.origin.y + s_L.portrait.size.h / 2),
                 amount, COL_OK);
@@ -360,7 +356,6 @@ static void fire_card(Card *c, bool by_hero) {
 
     tw_start(&c->fx, 420);
     if (by_hero) {
-        sound_play(SFX_FIRE);
         if (bonus_hit) ach_unlock(ACH_SIX_BONUS);
     }
 
@@ -596,7 +591,6 @@ static void check_end(void) {
         g_run.gold += gold;
         g_run.in_fight = false;
         save_run();
-        sound_play(SFX_WIN);
         ach_unlock(ACH_FIRST_WIN);
         if (s_elite) ach_unlock(ACH_ELITE);
         if (s_hero.hp >= s_hp_at_start) ach_unlock(ACH_UNTOUCHED);
@@ -608,7 +602,6 @@ static void check_end(void) {
         g_last_battle = BATTLE_LOST;
         g_run.hp = 0;
         g_run.in_fight = false;
-        sound_play(SFX_LOSE);
         toast("You are out of the game.");
         if (s_foe_timer) { app_timer_cancel(s_foe_timer); s_foe_timer = NULL; }
         app_timer_register(1900, finish, NULL);
@@ -650,7 +643,6 @@ static void place_die(int8_t ci, int8_t di) {
     d->used = true;
     d->from = s_L.die[di];
     tw_start(&d->fly, 220);
-    sound_play(SFX_PLACE);
     if (card_ready(c)) fire_card(c, true);
 }
 
@@ -703,7 +695,6 @@ static void cpu_bank(void) {
     d->used = false;
     if (s_pending_burn > 0) { d->burning = true; s_pending_burn--; }
     tw_start(&d->settle, 420);
-    sound_play(SFX_BANK);
     s_dice_n++;
 
     s_cpu = 0;
@@ -735,7 +726,6 @@ static void cpu_push(bool guaranteed) {
         // Overshot. The build is gone, and so is the chance it represented.
         toast("BUST at %d - that one is gone", s_cpu);
         vibes_double_pulse();
-        sound_play(SFX_BUST);
         ach_unlock(ACH_BUST);
         s_cpu = 0;
         s_cpu_live = false;

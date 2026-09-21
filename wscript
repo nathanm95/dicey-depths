@@ -19,6 +19,15 @@ def configure(ctx):
     # menus. The emulator cannot send SELECT through the QEMU monitor and
     # `pebble emu-button` wedges screenshots for the rest of the session, so
     # without this the combat screen cannot be captured at all. Debug only.
+    # DD_BOOT_FLOOR=3 starts a campaign run already standing on the boss floor.
+    # The boss-win path runs through progress_mark_cleared, the achievement
+    # unlocks and clear_run, and DD_BOOT_COMBAT cannot reach it because it
+    # pushes combat with no node behind it. Independent of DD_BOOT_COMBAT.
+    if os.environ.get('DD_BOOT_FLOOR'):
+        for env in ctx.all_envs.values():
+            env.append_value('DEFINES', ['DD_BOOT_FLOOR=' + os.environ['DD_BOOT_FLOOR'],
+                                         'DD_BOOT_CLASS=' + os.environ.get('DD_BOOT_CLASS', '0')])
+
     if os.environ.get('DD_BOOT_COMBAT'):
         enemy = os.environ.get('DD_BOOT_ENEMY', '0')
         rule = os.environ.get('DD_BOOT_RULE', '0')

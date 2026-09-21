@@ -2,7 +2,6 @@
 #include "ui.h"
 #include "anim.h"
 #include "portraits.h"
-#include "sound.h"
 #include "achieve.h"
 
 // ---------------------------------------------------------------------------
@@ -486,7 +485,7 @@ static void campaign_window_push(void) {
 
 // --- title -----------------------------------------------------------------
 enum { ROW_CONTINUE = 0, ROW_CAMPAIGN, ROW_ENDLESS, ROW_SCORES,
-       ROW_ACHIEVE, ROW_DIFF, ROW_SOUND, ROW_HOWTO, ROW_MAX };
+       ROW_ACHIEVE, ROW_DIFF, ROW_HOWTO, ROW_MAX };
 
 static bool has_run(void) { return g_run.active; }
 static int  title_row_for(int row) { return has_run() ? row : row + 1; }
@@ -541,11 +540,6 @@ static void title_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *d
             snprintf(t, sizeof(t), "Difficulty: %s", difficulty_name(difficulty_get()));
             snprintf(s, sizeof(s), "%s", difficulty_blurb(difficulty_get()));
             break;
-        case ROW_SOUND:
-            snprintf(t, sizeof(t), "Sound: %s", sound_enabled() ? "on" : "off");
-            snprintf(s, sizeof(s), PBL_IF_ROUND_ELSE("No speaker on this watch",
-                                                     "Tap to change"));
-            break;
         default:
             snprintf(t, sizeof(t), "How to play");
             snprintf(s, sizeof(s), "Rules, statuses, controls");
@@ -565,11 +559,6 @@ static void title_select(MenuLayer *m, MenuIndex *idx, void *c) {
             // Takes effect on the next run started; one already under way keeps
             // the difficulty it began with.
             difficulty_set((uint8_t)((difficulty_get() + 1) % DIFF_COUNT));
-            menu_layer_reload_data(s_title_menu);
-            break;
-        case ROW_SOUND:
-            sound_set_enabled(!sound_enabled());
-            if (sound_enabled()) sound_play(SFX_LIMIT);
             menu_layer_reload_data(s_title_menu);
             break;
         default:           howto_window_push(); break;
@@ -605,7 +594,6 @@ int main(void) {
     // combat window opts back out for itself, because it owns its own drags.
     app_touch_navigation_enable(true);
 
-    sound_init();
     progress_load();
     load_run();
 
@@ -616,6 +604,22 @@ int main(void) {
     });
     window_stack_push(s_title_win, true);
     splash_window_push();   // sits on top of the title and gets out of the way
+
+#ifdef DD_BOOT_FLOOR
+    run_new(MODE_CAMPAIGN, 0, DD_BOOT_CLASS);
+    g_run.floor = DD_BOOT_FLOOR;
+    g_run.level = DD_BOOT_FLOOR;
+    g_run.max_hp = (int16_t)(g_run.max_hp + 30);
+    g_run.hp = g_run.max_hp;
+    {   // a kit that can actually finish a boss, so the WIN path is reachable
+        static const uint8_t strong[MAX_EQUIP] = {14, 11, 20, 12, 8, 0};
+        for (uint8_t i = 0; i < run_equip_slots() && i < MAX_EQUIP; i++)
+            g_run.equip[i] = strong[i];
+    }
+    run_build_floor();
+    save_run();
+    floor_window_push();
+#endif
 
 #ifdef DD_BOOT_COMBAT
     // Debug entry point: skip the menus and drop straight into a fight, so the

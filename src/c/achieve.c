@@ -1,6 +1,5 @@
 #include "game.h"
 #include "achieve.h"
-#include "sound.h"
 
 static const char *s_names[ACH_COUNT] = {
     "First Blood", "Episode Cleared", "Giant Killer", "Lucky Six",
@@ -32,9 +31,5 @@ void ach_unlock(AchId id) {
     if (id >= ACH_COUNT || ach_has(id)) return;
     g_prog.achieved |= (uint16_t)(1 << id);
     progress_save();
-    // Deliberately silent. An achievement almost always lands in the same
-    // instant as something else that makes a noise - a win, a Limit Break - and
-    // two sounds at once is exactly what crashed the emulator. The buzz is
-    // enough, and it does not collide.
     vibes_short_pulse();
 }

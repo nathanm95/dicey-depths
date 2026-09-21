@@ -108,8 +108,8 @@ shapes: `emery` (Time 2) is a 200x228 rectangle and `gabbro` (Round 2) is a 260x
 Nothing in the layout assumes a rectangle — every band is measured against the chord of the
 circle at that height, and scrolling text flows to the curve of the glass.
 
-Sound is Time 2 only; Round 2 has no speaker, so nothing the game plays carries information
-that isn't already on the screen.
+There is no sound. Round 2 has no speaker at all, so the game was never going to rely on it,
+and all of its feedback is carried by the screen and the vibration motor.
 
 ## Building
 
