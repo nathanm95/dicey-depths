@@ -507,3 +507,48 @@ Memory was measured and ruled out: 75,548 bytes free at the title, unchanged
 to the byte after 25 window open/close cycles, and 168 bytes lower after a
 full floor + fight + results cycle (saved progress, not a leak). Build with
 `DD_HEAP=1` to put `heap_bytes_free()` on the title screen.
+
+## The emulator cannot test touch at all
+
+pebble-qemu exposes a "Pebble Touch (absolute)" device, and it is a stub. It
+delivers Touchdown and Liftoff and nothing else:
+
+  * every event arrives at **(0,0)** regardless of where it was aimed
+  * **no PositionUpdate is ever generated**, so there is no drag
+
+Verified three ways -- the monitor's `mouse_move` in pixels, the same scaled to
+QEMU's 0..32767 absolute range, and real RFB PointerEvents over `--vnc` (launch
+with `pebble install --emulator emery --vnc`, port 5901). All three give
+`@0,0` with zero moves. `pebble emu-tap` is the accelerometer, not the screen.
+
+So drag, tap-to-place, swipe-to-scroll and every hit rect are untestable in the
+emulator. Anything touch-shaped is verified in `tools/hostsim` instead, and on
+hardware, and nowhere else. Do not claim a touch path is tested because a
+button test passed on the same screen.
+
+## tools/hostsim -- the touch and combat fuzzer
+
+Compiles the real `combat.c` (and items/run/enemies/classes/rules) against a
+stub `pebble.h` on the host, under AddressSanitizer and UBSan, and drives it
+with random gestures, button presses, phase changes, frame ticks and foe
+turns, asserting a set of invariants after every single event.
+
+    tools/hostsim/build.sh && tools/hostsim/fuzz_touch 60000 <seed>
+
+Geometry is real (`grect_contains_point`, `grect_inset`); drawing is inert. It
+fuzzes both displays, since the round layout computes different rects. The
+current code survives ~850k touch events across eight seeds with no ASan
+finding. That rules out memory corruption in the combat screen -- it does not
+rule out a firmware-level fault, which this cannot see.
+
+Caveat learned the hard way: the harness can reach states the game cannot. Its
+first "failure" came from calling `roll_side` outside `begin_player_turn`,
+which no shipping code path does. Check reachability before calling something
+a bug.
+
+## tools/smoke.sh -- the five ways a fight ends
+
+    tools/smoke.sh <class 0|1> <1=win 2=lose> <tag> [platform] [0=campaign 1=endless]
+
+Boss win as each class, an ordinary loss, a death in Endless (which submits a
+score), and a boss win on gabbro. Each leaves combat by a different path.

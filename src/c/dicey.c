@@ -115,7 +115,7 @@ static void over_load(Window *window) {
 }
 
 static void over_appear(Window *window) {
-    window_set_touch_bridge_disabled(window, true);
+    // No bridge call here either -- see combat.c's window_appear.
     if (touch_service_is_enabled()) touch_service_subscribe(over_touch, NULL);
 }
 

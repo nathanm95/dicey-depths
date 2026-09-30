@@ -97,7 +97,7 @@ static void window_load(Window *window) {
 
 static void window_appear(Window *window) {
     anim_reset();
-    window_set_touch_bridge_disabled(window, true);
+    // No bridge call here either -- see combat.c's window_appear.
     if (touch_service_is_enabled()) touch_service_subscribe(touch_handler, NULL);
     s_frame = app_timer_register(ANIM_FRAME_MS, frame, NULL);
     s_auto  = app_timer_register(SPLASH_HOLD_MS, auto_close, NULL);

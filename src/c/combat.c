@@ -128,6 +128,11 @@ static int16_t    s_foe_ghost, s_hero_ghost;
 static Floater    s_float[MAX_FLOAT];
 
 static bool       s_touch_live, s_dragging;
+#ifdef DD_TOUCHDBG
+static uint16_t   s_dbg_ev, s_dbg_nonnav, s_dbg_down, s_dbg_move, s_dbg_lift;
+static int16_t    s_dbg_x, s_dbg_y;
+static bool       s_dbg_subscribed;
+#endif
 static int8_t     s_drag_die, s_hover_card;
 static GPoint     s_drag_pt, s_touch_start;
 
@@ -379,6 +384,18 @@ static void roll_side(bool hero) {
     uint8_t cardn = hero ? s_card_n : s_foe_card_n;
 
     cb->shield = 0;     // a shield lasts until your own next turn
+
+    if (hero) {
+        // Rebuilding the tray invalidates anything pointing into it. Today the
+        // only caller clears these first, so this changes no behaviour -- it
+        // just stops the invariant depending on a caller remembering to.
+        s_mode = SEL_BROWSE;
+        s_pick_die = -1;
+        s_dragging = false;
+        s_drag_die = -1;
+        s_hover_card = -1;
+        s_touch_live = false;
+    }
 
     // The Robot is given nothing to start with — it builds its numbers during
     // the turn, so its tray starts empty and its allowance is builds, not dice.
@@ -1186,6 +1203,12 @@ static void draw_hero_strip(GContext *ctx, const Layout *L) {
         snprintf(buf, sizeof(buf), "HP %d/%d  SH%d", s_hero.hp, s_hero.max_hp, s_hero.shield);
     else
         snprintf(buf, sizeof(buf), "HP %d/%d", s_hero.hp, s_hero.max_hp);
+#ifdef DD_TOUCHDBG
+    // sub = did we subscribe; ev = events seen; nn = dropped as unarmed;
+    // d/m/u = touchdown / move / liftoff.
+    snprintf(buf, sizeof(buf), "e%d m%d @%d,%d",
+             s_dbg_ev, s_dbg_move, s_dbg_x, s_dbg_y);
+#endif
     ui_draw_text_c(ctx, buf, ui_font_tiny(), r, COL_INK, GTextAlignmentLeft);
     draw_status_row(ctx, &s_hero, r, GTextAlignmentRight);
 }
@@ -1348,10 +1371,27 @@ static void frame(void *ctx) {
 }
 
 // --- touch -----------------------------------------------------------------
+static void next_free_die(int dir);   // defined with the button handlers below
+
+// A die is 28px in a 200px tray and the gaps between them were dead space, so
+// a fingertip that landed a few pixels wide of one hit nothing. The target is
+// the die's whole column instead: full tray height, and half the gap on each
+// side, which leaves no gap at all between neighbours.
+static GRect die_hit_rect(const Layout *L, int i) {
+    GRect d = L->die[i];
+    GRect b = L->dice_band;
+    int16_t pad = 3;                      // half the 5px gap, rounded down
+    int16_t x = (int16_t)(d.origin.x - pad);
+    int16_t w = (int16_t)(d.size.w + pad * 2);
+    int16_t y = b.size.h ? b.origin.y : (int16_t)(d.origin.y - 4);
+    int16_t h = b.size.h ? b.size.h : (int16_t)(d.size.h + 8);
+    return GRect(x, y, w, h);
+}
+
 static int8_t hit_die(const Layout *L, GPoint p) {
     for (int i = 0; i < s_dice_n; i++) {
         if (s_dice[i].used) continue;
-        GRect r = grect_inset(L->die[i], GEdgeInsets(-4));   // forgiving to a fingertip
+        GRect r = die_hit_rect(L, i);
         if (grect_contains_point(&r, &p)) return (int8_t)i;
     }
     return -1;
@@ -1372,6 +1412,15 @@ static int8_t hit_action(const Layout *L, GPoint p) {
 }
 
 static void touch_handler(const TouchEvent *e, void *ctx) {
+#ifdef DD_TOUCHDBG
+    s_dbg_ev++;
+    if (e->non_navigational) s_dbg_nonnav++;
+    s_dbg_x = e->x; s_dbg_y = e->y;
+    if (e->type == TouchEvent_Touchdown)      s_dbg_down++;
+    else if (e->type == TouchEvent_PositionUpdate) s_dbg_move++;
+    else if (e->type == TouchEvent_Liftoff)   s_dbg_lift++;
+    layer_mark_dirty(s_layer);
+#endif
     // An unarmed contact — the touch that woke the watch — must never play a
     // die. The flag is latched at Touchdown and carried for the whole gesture.
     if (e->non_navigational) return;
@@ -1446,6 +1495,15 @@ static void touch_handler(const TouchEvent *e, void *ctx) {
                 s_drag_die = -1;
                 break;
             }
+            // Landed in the tray but not on a free die — every used die leaves
+            // a hole. Treat it as "give me the next one" rather than as a miss,
+            // which is what a player reaching for a different die means.
+            if (grect_contains_point(&L->dice_band, &p) && any_die_free()) {
+                if (s_mode != SEL_PICK) s_mode = SEL_PICK;
+                next_free_die(1);
+                s_drag_die = -1;
+                break;
+            }
             if (ci >= 0) {
                 if (s_mode == SEL_PICK && s_pick_die >= 0) {
                     place_die(ci, s_pick_die);
@@ -1472,7 +1530,10 @@ static void touch_handler(const TouchEvent *e, void *ctx) {
 // --- buttons ---------------------------------------------------------------
 static void next_free_die(int dir) {
     if (s_dice_n == 0) return;
-    int8_t start = (s_pick_die < 0) ? 0 : s_pick_die;
+    // With nothing held yet, the first die in the tray is the obvious choice,
+    // so the search has to include it. Starting at 1 handed you the SECOND die
+    // and left you wondering why the tray ignored your first one.
+    int8_t start = (s_pick_die < 0) ? (int8_t)(dir > 0 ? -1 : 0) : s_pick_die;
     for (int i = 1; i <= s_dice_n; i++) {
         int8_t cand = (int8_t)(((int)start + dir * i + s_dice_n * 8) % s_dice_n);
         if (!s_dice[cand].used) { s_pick_die = cand; return; }
@@ -1501,9 +1562,14 @@ static void move_cursor(int dir) {
     s_cursor = c;
 }
 
+// You choose the card first and the die second: SELECT on a card puts a die in
+// your hand. So while a die IS in hand, Up and Down belong to the tray. They
+// used to keep moving the card cursor, which left no way at all to change dice
+// without tapping one exactly — the single thing players complained about.
 static void click_up(ClickRecognizerRef r, void *ctx) {
     if (s_show_kit) { s_show_kit = false; redraw(); return; }
     if (s_phase != PHASE_PLAYER) return;
+    if (s_mode == SEL_PICK) { next_free_die(-1); redraw(); return; }
     move_cursor(-1);
     grid_reveal(s_cursor);
     redraw();
@@ -1512,6 +1578,7 @@ static void click_up(ClickRecognizerRef r, void *ctx) {
 static void click_down(ClickRecognizerRef r, void *ctx) {
     if (s_show_kit) { s_show_kit = false; redraw(); return; }
     if (s_phase != PHASE_PLAYER) return;
+    if (s_mode == SEL_PICK) { next_free_die(1); redraw(); return; }
     move_cursor(1);
     grid_reveal(s_cursor);
     redraw();
@@ -1583,10 +1650,21 @@ static void window_load(Window *window) {
 }
 
 static void window_appear(Window *window) {
-    // This screen is a drag-and-drop surface, not a list to be swiped, so take
-    // the touch stream away from the system gesture bridge.
-    window_set_touch_bridge_disabled(window, true);
+    // This screen is a drag-and-drop surface, not a list to be swiped.
+    //
+    // It used to call window_set_touch_bridge_disabled(true) as well. That is
+    // removed: the bridge only maps swipes on a MenuLayer or ScrollLayer to
+    // button presses, and this window has neither, so disabling it bought
+    // nothing -- while by the SDK's own description it makes the system
+    // recognizers FAIL on every Touchdown and hand the touch to recognizers
+    // the app attached, of which there are none. That is the one odd state in
+    // our touch path, and a player reported OS reboots they associated with
+    // touching the dice. Measured first: with the bridge left enabled the raw
+    // touch stream still arrives intact, so this costs no input.
     if (touch_service_is_enabled()) touch_service_subscribe(touch_handler, NULL);
+#ifdef DD_TOUCHDBG
+    s_dbg_subscribed = touch_service_is_enabled();
+#endif
     if (!s_frame) s_frame = app_timer_register(ANIM_FRAME_MS, frame, NULL);
 }
 
