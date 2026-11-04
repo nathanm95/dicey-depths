@@ -111,3 +111,6 @@ GSize graphics_text_layout_get_content_size(const char *t, GFont f, GRect r,
 }
 static char s_font[8];
 GFont fonts_get_system_font(const char *key) { (void)key; return s_font; }
+
+// combat.c frees the menu backdrop before it loads; nothing to free here.
+void skin_release(void) {}

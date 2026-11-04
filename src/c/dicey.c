@@ -3,6 +3,7 @@
 #include "anim.h"
 #include "portraits.h"
 #include "achieve.h"
+#include "skin.h"
 
 // ---------------------------------------------------------------------------
 // Dicey Depths — title, menus and results.
@@ -13,17 +14,22 @@
 
 static Window    *s_title_win;
 static MenuLayer *s_title_menu;
+static Layer     *s_title_bg;
 static Window    *s_camp_win;
 static MenuLayer *s_camp_menu;
 static Window    *s_score_win;
 static MenuLayer *s_score_menu;
+static Layer     *s_score_bg;
 static Window    *s_howto_win;
 static ScrollLayer *s_howto_scroll;
 static TextLayer   *s_howto_text;
 static Window    *s_over_win;
 static Layer     *s_over_layer;
+static Layer     *s_over_bg;
 static AppTimer  *s_over_frame;
 static bool       s_over_won;
+static uint8_t    s_over_floor;
+static bool       s_over_endless;
 
 // --- results ---------------------------------------------------------------
 #define CONFETTI 14
@@ -46,8 +52,6 @@ static void over_frame(void *ctx) {
 
 static void over_update(Layer *layer, GContext *ctx) {
     GRect b = layer_get_bounds(layer);
-    graphics_context_set_fill_color(ctx, COL_BG);
-    graphics_fill_rect(ctx, b, 0, GCornerNone);
 
     if (s_over_won) {
         for (int i = 0; i < CONFETTI; i++) {
@@ -65,17 +69,20 @@ static void over_update(Layer *layer, GContext *ctx) {
                 s_over_won ? COL_GOLD : GColorLightGray, COL_INK);
 
     GRect band = ui_band(&b, (int16_t)(cy - 18), 30, 8);
-    ui_draw_text_c(ctx, s_over_won ? "WINNER" : "GAME OVER", ui_font_title(), band, COL_INK,
-                   GTextAlignmentCenter);
+    skin_text(ctx, s_over_won ? "WINNER" : "GAME OVER", ui_font_title(), band,
+              s_over_won ? GColorYellow : GColorWhite, GTextAlignmentCenter);
 
     char line[48];
     if (s_over_won) snprintf(line, sizeof(line), "Lady Luck pays out.");
-    else snprintf(line, sizeof(line), "Floors cleared: %d", g_prog.score_count ? g_prog.scores[0].floors : 0);
+    // This run's own result. It used to print the best Endless run ever, which
+    // a campaign loss has nothing to do with.
+    else if (s_over_endless) snprintf(line, sizeof(line), "Floors cleared: %d", s_over_floor ? s_over_floor - 1 : 0);
+    else snprintf(line, sizeof(line), "Out on floor %d of %d", s_over_floor, FLOOR_COUNT);
     GRect sub = ui_band(&b, (int16_t)(cy + 16), 24, 10);
-    ui_draw_text_c(ctx, line, ui_font_tiny(), sub, COL_INK, GTextAlignmentCenter);
+    skin_text(ctx, line, ui_font_small(), sub, GColorWhite, GTextAlignmentCenter);
 
     GRect hint = ui_band(&b, (int16_t)(cy + 42), 22, 10);
-    ui_draw_text_c(ctx, "Tap or press any button", ui_font_tiny(), hint, COL_FRAME, GTextAlignmentCenter);
+    skin_text(ctx, "Tap or press any button", ui_font_tiny(), hint, GColorCeleste, GTextAlignmentCenter);
 }
 
 static void over_close(void) { if (s_over_win) window_stack_remove(s_over_win, true); }
@@ -85,10 +92,14 @@ static void over_dismiss(ClickRecognizerRef r, void *ctx) { over_close(); }
 // The results screen draws into a plain Layer, so the system gesture bridge has
 // nothing to map and gives it no touch at all. Take the raw stream instead, or
 // the only way off this screen is a button.
+// Deferred a tick, like the splash: closing unsubscribes from the touch
+// service, and that must not happen inside the service's own callback.
+static void over_touch_close(void *ctx) { over_close(); }
+
 static void over_touch(const TouchEvent *e, void *ctx) {
     if (e->non_navigational) return;          // the contact that woke the watch
     if (e->type != TouchEvent_Liftoff) return;
-    over_close();
+    app_timer_register(0, over_touch_close, NULL);
 }
 
 static void over_click_config(void *ctx) {
@@ -101,6 +112,7 @@ static void over_click_config(void *ctx) {
 static void over_load(Window *window) {
     Layer *root = window_get_root_layer(window);
     GRect b = layer_get_bounds(root);
+    s_over_bg = skin_backdrop_layer(root);
     s_over_layer = layer_create(b);
     layer_set_update_proc(s_over_layer, over_update);
     layer_add_child(root, s_over_layer);
@@ -115,28 +127,35 @@ static void over_load(Window *window) {
 }
 
 static void over_appear(Window *window) {
+    skin_show(window, s_over_won ? RESOURCE_ID_BD_STAGE_WIN : RESOURCE_ID_BD_DUN_LOSE, SKIN_STAGE);
     // No bridge call here either -- see combat.c's window_appear.
     if (touch_service_is_enabled()) touch_service_subscribe(over_touch, NULL);
 }
 
 static void over_disappear(Window *window) {
     touch_service_unsubscribe();
+    skin_hide(window);
 }
 
 static void over_unload(Window *window) {
     if (s_over_frame) { app_timer_cancel(s_over_frame); s_over_frame = NULL; }
     layer_destroy(s_over_layer);
     s_over_layer = NULL;
+    skin_backdrop_layer_destroy(s_over_bg);
+    s_over_bg = NULL;
     window_destroy(s_over_win);
     s_over_win = NULL;
     if (s_title_menu) menu_layer_reload_data(s_title_menu);
 }
 
-void gameover_window_push(bool won) {
+void gameover_window_push(bool won, uint8_t floor, bool endless) {
+    if (s_over_win) return;
     s_over_won = won;
+    s_over_floor = floor;
+    s_over_endless = endless;
     if (won) vibes_double_pulse(); else vibes_long_pulse();
     s_over_win = window_create();
-    window_set_background_color(s_over_win, COL_BG);
+    window_set_background_color(s_over_win, GColorBlack);
     window_set_click_config_provider(s_over_win, over_click_config);
     window_set_window_handlers(s_over_win, (WindowHandlers) {
         .load = over_load, .appear = over_appear,
@@ -150,25 +169,44 @@ static uint16_t score_rows(MenuLayer *m, uint16_t s, void *c) {
     return g_prog.score_count ? g_prog.score_count : 1;
 }
 
+static GBitmap *s_hall_ic[2];    // trophy for first place, medal for the rest
+
 static void score_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *data) {
     char t[32], s[40];
     if (!g_prog.score_count) {
-        menu_cell_basic_draw(ctx, cell, "No runs yet", "Endless mode records here", NULL);
+        skin_cell(ctx, cell, "No runs yet", "Endless mode records here", s_hall_ic[0], SKIN_LOCKED);
         return;
     }
     const ScoreEntry *e = &g_prog.scores[idx->row];
     snprintf(t, sizeof(t), "%d. Floor %d", idx->row + 1, e->floors);
     snprintf(s, sizeof(s), "%d gold   level %d", e->gold, e->level);
-    menu_cell_basic_draw(ctx, cell, t, s, NULL);
+    skin_cell(ctx, cell, t, s, s_hall_ic[idx->row == 0 ? 0 : 1], 0);
 }
+
+static void hall_icons_load(void) {
+    if (!s_hall_ic[0]) s_hall_ic[0] = gbitmap_create_with_resource(RESOURCE_ID_IC_TROPHY);
+    if (!s_hall_ic[1]) s_hall_ic[1] = gbitmap_create_with_resource(RESOURCE_ID_IC_MEDAL);
+}
+
+static void hall_icons_unload(void) {
+    for (int i = 0; i < 2; i++) {
+        if (s_hall_ic[i]) { gbitmap_destroy(s_hall_ic[i]); s_hall_ic[i] = NULL; }
+    }
+}
+
+static void hall_appear(Window *window)    { skin_show(window, RESOURCE_ID_BD_STAGE_HALL, SKIN_STAGE); }
+static void hall_disappear(Window *window) { skin_hide(window); }
 
 static void score_load(Window *window) {
     Layer *root = window_get_root_layer(window);
+    hall_icons_load();
+    s_score_bg = skin_backdrop_layer(root);
     s_score_menu = menu_layer_create(layer_get_bounds(root));
     menu_layer_set_callbacks(s_score_menu, NULL, (MenuLayerCallbacks) {
-        .get_num_rows = score_rows, .draw_row = score_draw
+        .get_num_rows = score_rows, .draw_row = score_draw,
+        .draw_background = skin_menu_background
     });
-    menu_layer_set_highlight_colors(s_score_menu, COL_GOLD, GColorBlack);
+    skin_menu(s_score_menu);
     menu_layer_set_click_config_onto_window(s_score_menu, window);
     layer_add_child(root, menu_layer_get_layer(s_score_menu));
 }
@@ -176,15 +214,23 @@ static void score_load(Window *window) {
 static void score_unload(Window *window) {
     menu_layer_destroy(s_score_menu);
     s_score_menu = NULL;
+    skin_backdrop_layer_destroy(s_score_bg);
+    s_score_bg = NULL;
+    hall_icons_unload();
     window_destroy(s_score_win);
     s_score_win = NULL;
 }
 
 void scores_window_push(void) {
+    // Each screen keeps its window and layers in file statics. An animated pop
+    // unloads only when the slide ends, so a second push landing in that gap
+    // would have the old unload destroy the new window. Refuse it instead.
+    if (s_score_win) return;
     s_score_win = window_create();
-    window_set_background_color(s_score_win, COL_BG);
+    window_set_background_color(s_score_win, GColorBlack);
     window_set_window_handlers(s_score_win, (WindowHandlers) {
-        .load = score_load, .unload = score_unload
+        .load = score_load, .appear = hall_appear, .disappear = hall_disappear,
+        .unload = score_unload
     });
     window_stack_push(s_score_win, true);
 }
@@ -192,25 +238,28 @@ void scores_window_push(void) {
 // --- achievements ----------------------------------------------------------
 static Window    *s_ach_win;
 static MenuLayer *s_ach_menu;
+static Layer     *s_ach_bg;
 
 static uint16_t ach_rows(MenuLayer *m, uint16_t s, void *c) { return ACH_COUNT; }
 
 static void ach_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *data) {
     AchId id = (AchId)idx->row;
     bool got = ach_has(id);
-    char t[40];
     // A locked one still names itself; hiding the goal hides the reason to try.
-    snprintf(t, sizeof(t), "%s%s", got ? "" : "- ", ach_name(id));
-    menu_cell_basic_draw(ctx, cell, t, ach_blurb(id), NULL);
+    // Its medal is a grey silhouette until it is earned.
+    skin_cell(ctx, cell, ach_name(id), ach_blurb(id), s_hall_ic[1], got ? 0 : SKIN_LOCKED);
 }
 
 static void ach_load(Window *window) {
     Layer *root = window_get_root_layer(window);
+    hall_icons_load();
+    s_ach_bg = skin_backdrop_layer(root);
     s_ach_menu = menu_layer_create(layer_get_bounds(root));
     menu_layer_set_callbacks(s_ach_menu, NULL, (MenuLayerCallbacks) {
-        .get_num_rows = ach_rows, .draw_row = ach_draw
+        .get_num_rows = ach_rows, .draw_row = ach_draw,
+        .draw_background = skin_menu_background
     });
-    menu_layer_set_highlight_colors(s_ach_menu, COL_GOLD, GColorBlack);
+    skin_menu(s_ach_menu);
     menu_layer_set_click_config_onto_window(s_ach_menu, window);
     layer_add_child(root, menu_layer_get_layer(s_ach_menu));
 }
@@ -218,15 +267,20 @@ static void ach_load(Window *window) {
 static void ach_unload(Window *window) {
     menu_layer_destroy(s_ach_menu);
     s_ach_menu = NULL;
+    skin_backdrop_layer_destroy(s_ach_bg);
+    s_ach_bg = NULL;
+    hall_icons_unload();
     window_destroy(s_ach_win);
     s_ach_win = NULL;
 }
 
 static void achievements_window_push(void) {
+    if (s_ach_win) return;
     s_ach_win = window_create();
-    window_set_background_color(s_ach_win, COL_BG);
+    window_set_background_color(s_ach_win, GColorBlack);
     window_set_window_handlers(s_ach_win, (WindowHandlers) {
-        .load = ach_load, .unload = ach_unload
+        .load = ach_load, .appear = hall_appear, .disappear = hall_disappear,
+        .unload = ach_unload
     });
     window_stack_push(s_ach_win, true);
 }
@@ -239,8 +293,8 @@ static const char HOWTO_TEXT[] =
 "Drag a die onto a card. Or tap a die, then tap a card. Or use the buttons: "
 "Up/Down to move, Select to pick a die and Select again to drop it.\n"
 "Tap the enemy (or hold Select) to see exactly what it is carrying.\n"
-"There is no quitting a fight: see it through. Closing the app part way "
-"through one ends the run.\n\n"
+"There is no walking out of a fight. Close the app part way through one "
+"and it is waiting for you when you come back.\n\n"
 "CARDS\n"
 "Each card takes a die that matches its slot. The little box on the card says "
 "what it will accept: E for even, O for odd, 4+ for four or higher, 3- for "
@@ -261,8 +315,8 @@ static const char HOWTO_TEXT[] =
 "THE WARRIOR\n"
 "You always carry a Reroll card. Feed it a die and that die is rerolled and "
 "handed straight back to you, unspent. It is the one card that works more than "
-"once a turn: its uses refill each turn, one for every die you carry beyond the "
-"first, so a bigger handful also buys you more second chances.\n"
+"once a turn: its uses refill each turn, one for every die you carry, so a "
+"bigger handful also buys you more second chances.\n"
 "Take damage to charge your Limit Break: FURY makes your next card fire twice.\n\n"
 "STATUSES\n"
 "BRN Burn - a die catches fire, 2 HP to put out\n"
@@ -281,6 +335,8 @@ static const char HOWTO_TEXT[] =
 "gold against your health.\n\n"
 "Inspired by Dicey Dungeons by Terry Cavanagh.";
 
+// The one menu screen with no painted backdrop: it is a page of small text,
+// and over the stage art it was hard work to read.
 static void howto_load(Window *window) {
     Layer *root = window_get_root_layer(window);
     GRect b = layer_get_bounds(root);
@@ -299,7 +355,7 @@ static void howto_load(Window *window) {
     text_layer_set_text(s_howto_text, HOWTO_TEXT);
     text_layer_set_font(s_howto_text, ui_font_tiny());
     text_layer_set_background_color(s_howto_text, GColorClear);
-    text_layer_set_text_color(s_howto_text, COL_INK);
+    text_layer_set_text_color(s_howto_text, GColorWhite);
     text_layer_set_overflow_mode(s_howto_text, GTextOverflowModeWordWrap);
 
     // The layer has to be in the hierarchy before text flow is switched on,
@@ -326,8 +382,9 @@ static void howto_unload(Window *window) {
 }
 
 void howto_window_push(void) {
+    if (s_howto_win) return;
     s_howto_win = window_create();
-    window_set_background_color(s_howto_win, COL_BG);
+    window_set_background_color(s_howto_win, GColorOxfordBlue);
     window_set_window_handlers(s_howto_win, (WindowHandlers) {
         .load = howto_load, .unload = howto_unload
     });
@@ -341,15 +398,16 @@ void howto_window_push(void) {
 static Window    *s_class_win;
 static MenuLayer *s_class_menu;
 static GBitmap   *s_class_pic[CLASS_COUNT];
+static Layer     *s_class_bg;
 static uint8_t    s_pending_mode, s_pending_level;
 
 static uint16_t class_rows(MenuLayer *m, uint16_t s, void *c) { return CLASS_COUNT; }
 static int16_t  class_cell_h(MenuLayer *m, MenuIndex *i, void *c) { return 58; }
 
 static void class_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *data) {
+    skin_cell_bg(ctx, cell);
     GRect r = ui_cell_inset(layer_get_bounds(cell));
     const ClassDef *cd = class_def((uint8_t)idx->row);
-    bool hi = menu_cell_layer_is_highlighted(cell);
 
     // Choosing a class from two lines of prose is a poor way to meet someone.
     GBitmap *pic = (idx->row < CLASS_COUNT) ? s_class_pic[idx->row] : NULL;
@@ -363,31 +421,41 @@ static void class_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *d
         tx = (int16_t)(tx + ps.w + 4);
     }
     int16_t tw = (int16_t)(r.origin.x + r.size.w - tx - 4);
-    ui_draw_text_c(ctx, cd->name, ui_font_small(),
-                   GRect(tx, r.origin.y + 1, tw, 18),
-                   hi ? GColorWhite : COL_INK, GTextAlignmentLeft);
-    ui_draw_text_c(ctx, cd->blurb, ui_font_tiny(),
-                   GRect(tx, r.origin.y + 18, tw, 38),
-                   hi ? GColorWhite : COL_FRAME, GTextAlignmentLeft);
+    skin_text(ctx, cd->name, ui_font_body(), GRect(tx, r.origin.y, tw, 20),
+              skin_title_col(cell, 0), GTextAlignmentLeft);
+    skin_text(ctx, cd->blurb, ui_font_tiny(), GRect(tx, r.origin.y + 20, tw, 38),
+              skin_sub_col(cell, 0), GTextAlignmentLeft);
+}
+
+// Starting a run tears down this menu and the campaign list beneath it. Doing
+// that inside this MenuLayer's own select callback destroys the layer that is
+// still running the callback, so it happens on the next tick instead.
+static void class_start(void *ctx) {
+    if (s_class_win) window_stack_remove(s_class_win, false);
+    if (s_camp_win) window_stack_remove(s_camp_win, false);
+    floor_window_push();
 }
 
 static void class_select(MenuLayer *m, MenuIndex *idx, void *c) {
     run_new((GameMode)s_pending_mode, s_pending_level, (uint8_t)idx->row);
-    window_stack_remove(s_class_win, false);
-    if (s_camp_win) window_stack_remove(s_camp_win, false);
-    floor_window_push();
+    app_timer_register(0, class_start, NULL);
 }
+
+static void class_appear(Window *window)    { skin_show(window, RESOURCE_ID_BD_STAGE_CLASS, SKIN_STAGE); }
+static void class_disappear(Window *window) { skin_hide(window); }
 
 static void class_load(Window *window) {
     s_class_pic[CLASS_WARRIOR] = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_CLASS_WARRIOR);
     s_class_pic[CLASS_ROBOT]   = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_CLASS_ROBOT);
     Layer *root = window_get_root_layer(window);
+    s_class_bg = skin_backdrop_layer(root);
     s_class_menu = menu_layer_create(layer_get_bounds(root));
     menu_layer_set_callbacks(s_class_menu, NULL, (MenuLayerCallbacks) {
         .get_num_rows = class_rows, .draw_row = class_draw,
-        .select_click = class_select, .get_cell_height = class_cell_h
+        .select_click = class_select, .get_cell_height = class_cell_h,
+        .draw_background = skin_menu_background
     });
-    menu_layer_set_highlight_colors(s_class_menu, COL_HERO, GColorWhite);
+    skin_menu(s_class_menu);
     menu_layer_set_click_config_onto_window(s_class_menu, window);
     layer_add_child(root, menu_layer_get_layer(s_class_menu));
 }
@@ -398,32 +466,54 @@ static void class_unload(Window *window) {
     }
     menu_layer_destroy(s_class_menu);
     s_class_menu = NULL;
+    skin_backdrop_layer_destroy(s_class_bg);
+    s_class_bg = NULL;
     window_destroy(s_class_win);
     s_class_win = NULL;
 }
 
 static void class_window_push(uint8_t mode, uint8_t level) {
+    if (s_class_win) return;
     s_pending_mode = mode;
     s_pending_level = level;
     s_class_win = window_create();
-    window_set_background_color(s_class_win, COL_BG);
+    window_set_background_color(s_class_win, GColorBlack);
     window_set_window_handlers(s_class_win, (WindowHandlers) {
-        .load = class_load, .unload = class_unload
+        .load = class_load, .appear = class_appear, .disappear = class_disappear,
+        .unload = class_unload
     });
     window_stack_push(s_class_win, true);
 }
 
 // --- campaign select -------------------------------------------------------
+// Each episode is its own stage set, and the backdrop follows the highlighted
+// row the way a game show cuts to the next set. Each row shows the boss waiting
+// at the end of it -- as a silhouette until the episode is open.
+static Layer   *s_camp_bg;
+static GBitmap *s_camp_boss[RULE_COUNT];
+static GBitmap *s_camp_lock;
+
+static const uint32_t s_episode_bd[RULE_COUNT] = {
+    RESOURCE_ID_BD_EP1_OPENING, RESOURCE_ID_BD_EP2_GREED, RESOURCE_ID_BD_EP3_PARALLEL,
+    RESOURCE_ID_BD_EP4_ELIMINATION, RESOURCE_ID_BD_EP5_SUDDEN,
+    RESOURCE_ID_BD_BONUS_HOARD, RESOURCE_ID_BD_BONUS_SWARM, RESOURCE_ID_BD_BONUS_BACKSTAGE
+};
+
 static uint16_t camp_rows(MenuLayer *m, uint16_t s, void *c) {
     return (uint16_t)(RULE_CAMPAIGN_COUNT +
                       (bonus_rounds_unlocked() ? (RULE_COUNT - RULE_CAMPAIGN_COUNT) : 0));
 }
-static int16_t  camp_cell_h(MenuLayer *m, MenuIndex *i, void *c) { return 46; }
+static int16_t  camp_cell_h(MenuLayer *m, MenuIndex *i, void *c) { return 54; }
+
+// Bonus Rounds only appear once they are earned, so a visible one is open.
+static bool camp_locked(int row) {
+    return !rule_is_bonus((uint8_t)row) && row >= g_prog.unlocked;
+}
 
 static void camp_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *data) {
+    skin_cell_bg(ctx, cell);
     GRect r = ui_cell_inset(layer_get_bounds(cell));
-    // Bonus Rounds only appear once they are earned, so a visible one is open.
-    bool locked = !rule_is_bonus((uint8_t)idx->row) && (idx->row >= g_prog.unlocked);
+    bool locked = camp_locked(idx->row);
     // Which difficulties this episode has been cleared on, so a finished
     // campaign still has somewhere to go.
     char marks[8] = "";
@@ -433,36 +523,67 @@ static void camp_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *da
         if ((g_prog.cleared[d] >> idx->row) & 1) marks[mn++] = letter[d];
     }
     marks[mn] = '\0';
-    // Drawing the cell by hand means honouring the highlight ourselves —
-    // otherwise the selected row is dark text on a dark fill.
-    bool hi = menu_cell_layer_is_highlighted(cell);
-    GColor title_col = hi ? GColorWhite : (locked ? GColorDarkGray : COL_INK);
-    GColor blurb_col = hi ? GColorWhite : (locked ? GColorDarkGray : COL_FRAME);
+    uint8_t flags = locked ? SKIN_LOCKED : 0;
+
+    int16_t tx = (int16_t)(r.origin.x + 4);
+    GBitmap *boss = (idx->row < RULE_COUNT) ? s_camp_boss[idx->row] : NULL;
+    if (boss) {
+        GSize bs = gbitmap_get_bounds(boss).size;
+        skin_icon(ctx, boss, GPoint(tx, (int16_t)(r.origin.y + (r.size.h - bs.h) / 2)), locked);
+        if (locked && s_camp_lock) {
+            GSize ls = gbitmap_get_bounds(s_camp_lock).size;
+            skin_icon(ctx, s_camp_lock, GPoint((int16_t)(tx + bs.w - ls.w + 2),
+                                               (int16_t)(r.origin.y + r.size.h - ls.h - 1)), false);
+        }
+        tx = (int16_t)(tx + bs.w + 4);
+    }
+    int16_t tw = (int16_t)(r.origin.x + r.size.w - tx - 2);
 
     char t[48];
-    snprintf(t, sizeof(t), "%d. %s%s%s", idx->row + 1, rule_name((RuleId)idx->row),
-             mn ? "  " : "", marks);
-    ui_draw_text_c(ctx, t, ui_font_small(),
-                   GRect(r.origin.x + 4, r.origin.y + 1, r.size.w - 8, 18),
-                   title_col, GTextAlignmentLeft);
-    ui_draw_text_c(ctx, locked ? "Locked - clear the one before it" : rule_blurb((RuleId)idx->row),
-                   ui_font_tiny(), GRect(r.origin.x + 4, r.origin.y + 18, r.size.w - 8, 28),
-                   blurb_col, GTextAlignmentLeft);
+    snprintf(t, sizeof(t), "%s%s%s", rule_name((RuleId)idx->row), mn ? "  " : "", marks);
+    skin_text(ctx, t, ui_font_small(), GRect(tx, r.origin.y + 1, tw, 18),
+              skin_title_col(cell, flags), GTextAlignmentLeft);
+    skin_text(ctx, locked ? "Locked - clear the one before it" : rule_blurb((RuleId)idx->row),
+              ui_font_tiny(), GRect(tx, r.origin.y + 18, tw, 34),
+              skin_sub_col(cell, flags), GTextAlignmentLeft);
 }
 
 static void camp_select(MenuLayer *m, MenuIndex *idx, void *c) {
-    if (idx->row >= g_prog.unlocked) { vibes_short_pulse(); return; }
+    if (camp_locked(idx->row)) { vibes_short_pulse(); return; }
     class_window_push(MODE_CAMPAIGN, (uint8_t)idx->row);
 }
 
+static void camp_show_set(int row) {
+    if (row < 0 || row >= RULE_COUNT || !s_camp_win) return;
+    skin_show(s_camp_win, s_episode_bd[row], SKIN_STAGE);
+    if (s_camp_bg) layer_mark_dirty(s_camp_bg);
+}
+
+static void camp_changed(MenuLayer *m, MenuIndex new_index, MenuIndex old_index, void *c) {
+    camp_show_set(new_index.row);
+}
+
+static void camp_appear(Window *window) {
+    camp_show_set(s_camp_menu ? menu_layer_get_selected_index(s_camp_menu).row : 0);
+}
+static void camp_disappear(Window *window) { skin_hide(window); }
+
 static void camp_load(Window *window) {
     Layer *root = window_get_root_layer(window);
+    for (int i = 0; i < RULE_COUNT; i++) {
+        uint32_t rid = portrait_resource_for(enemy_def(enemy_boss_for_level((uint8_t)i))->shape);
+        s_camp_boss[i] = rid ? gbitmap_create_with_resource(rid) : NULL;
+    }
+    s_camp_lock = gbitmap_create_with_resource(RESOURCE_ID_IC_LOCK);
+    s_camp_bg = skin_backdrop_layer(root);
     s_camp_menu = menu_layer_create(layer_get_bounds(root));
     menu_layer_set_callbacks(s_camp_menu, NULL, (MenuLayerCallbacks) {
         .get_num_rows = camp_rows, .draw_row = camp_draw,
-        .select_click = camp_select, .get_cell_height = camp_cell_h
+        .select_click = camp_select, .get_cell_height = camp_cell_h,
+        .selection_changed = camp_changed,
+        .draw_background = skin_menu_background
     });
-    menu_layer_set_highlight_colors(s_camp_menu, COL_FOE, GColorWhite);
+    skin_menu(s_camp_menu);
     menu_layer_set_click_config_onto_window(s_camp_menu, window);
     layer_add_child(root, menu_layer_get_layer(s_camp_menu));
 }
@@ -470,15 +591,23 @@ static void camp_load(Window *window) {
 static void camp_unload(Window *window) {
     menu_layer_destroy(s_camp_menu);
     s_camp_menu = NULL;
+    skin_backdrop_layer_destroy(s_camp_bg);
+    s_camp_bg = NULL;
+    for (int i = 0; i < RULE_COUNT; i++) {
+        if (s_camp_boss[i]) { gbitmap_destroy(s_camp_boss[i]); s_camp_boss[i] = NULL; }
+    }
+    if (s_camp_lock) { gbitmap_destroy(s_camp_lock); s_camp_lock = NULL; }
     window_destroy(s_camp_win);
     s_camp_win = NULL;
 }
 
 static void campaign_window_push(void) {
+    if (s_camp_win) return;
     s_camp_win = window_create();
-    window_set_background_color(s_camp_win, COL_BG);
+    window_set_background_color(s_camp_win, GColorBlack);
     window_set_window_handlers(s_camp_win, (WindowHandlers) {
-        .load = camp_load, .unload = camp_unload
+        .load = camp_load, .appear = camp_appear, .disappear = camp_disappear,
+        .unload = camp_unload
     });
     window_stack_push(s_camp_win, true);
 }
@@ -494,7 +623,11 @@ static uint16_t title_rows(MenuLayer *m, uint16_t s, void *c) {
     return (uint16_t)(has_run() ? ROW_MAX : ROW_MAX - 1);
 }
 
-static int16_t title_hh(MenuLayer *m, uint16_t s, void *c) { return 40; }
+static int16_t title_hh(MenuLayer *m, uint16_t s, void *c) { return PBL_IF_ROUND_ELSE(56, 44); }
+
+// One icon per row, and one per difficulty for the difficulty row.
+static GBitmap *s_title_ic[ROW_MAX];
+static GBitmap *s_diff_ic[DIFF_COUNT];
 
 static void title_header(GContext *ctx, const Layer *cell, uint16_t section, void *data) {
     GRect r = ui_cell_inset(layer_get_bounds(cell));
@@ -506,13 +639,28 @@ static void title_header(GContext *ctx, const Layer *cell, uint16_t section, voi
     snprintf(hb, sizeof(hb), "HEAP %u", (unsigned)heap_bytes_free());
     label = hb;
 #endif
-    ui_draw_text_c(ctx, label, ui_font_title(),
-                   GRect(r.origin.x + 2, r.origin.y + 2, r.size.w - 4, 30), COL_INK, GTextAlignmentCenter);
+    // A marquee title: a black outline all round, not just a drop shadow, so
+    // it holds up over the brightest part of the stage.
+    GFont f = fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD);
+    GRect t = GRect(r.origin.x, (int16_t)(r.origin.y + PBL_IF_ROUND_ELSE(14, 2)), r.size.w, 34);
+    graphics_context_set_text_color(ctx, GColorBlack);
+    for (int dy = -1; dy <= 2; dy++) {
+        for (int dx = -1; dx <= 2; dx++) {
+            if (!dx && !dy) continue;
+            graphics_draw_text(ctx, label, f, GRect(t.origin.x + dx, t.origin.y + dy, t.size.w, t.size.h),
+                               GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+        }
+    }
+    graphics_context_set_text_color(ctx, GColorYellow);
+    graphics_draw_text(ctx, label, f, t, GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 }
 
 static void title_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *data) {
     char t[32], s[40];
-    switch (title_row_for(idx->row)) {
+    int row = title_row_for(idx->row);
+    GBitmap *icon = (row == ROW_DIFF) ? s_diff_ic[difficulty_get() % DIFF_COUNT]
+                  : (row >= 0 && row < ROW_MAX) ? s_title_ic[row] : NULL;
+    switch (row) {
         case ROW_CONTINUE:
             snprintf(t, sizeof(t), "Continue");
             if (g_run.mode == MODE_ENDLESS) snprintf(s, sizeof(s), "Endless, floor %d", g_run.floor);
@@ -553,7 +701,7 @@ static void title_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *d
             snprintf(s, sizeof(s), "Rules, statuses, controls");
             break;
     }
-    menu_cell_basic_draw(ctx, cell, t, s, NULL);
+    skin_cell(ctx, cell, t, s, icon, 0);
 }
 
 static void title_select(MenuLayer *m, MenuIndex *idx, void *c) {
@@ -574,17 +722,31 @@ static void title_select(MenuLayer *m, MenuIndex *idx, void *c) {
 }
 
 static void title_appear(Window *window) {
+    skin_show(window, RESOURCE_ID_BD_STAGE_TITLE, SKIN_STAGE);
     if (s_title_menu) menu_layer_reload_data(s_title_menu);
 }
 
+static void title_disappear(Window *window) { skin_hide(window); }
+
 static void title_load(Window *window) {
     Layer *root = window_get_root_layer(window);
+    static const uint32_t row_ic[ROW_MAX] = {
+        RESOURCE_ID_IC_KEY, RESOURCE_ID_IC_FLAG, RESOURCE_ID_IC_STAIRS, RESOURCE_ID_IC_TROPHY,
+        RESOURCE_ID_IC_MEDAL, 0, RESOURCE_ID_IC_BOOK
+    };
+    static const uint32_t diff_ic[DIFF_COUNT] = {   // Normal, Easy, Hard
+        RESOURCE_ID_IC_SWORD, RESOURCE_ID_IC_FEATHER, RESOURCE_ID_IC_SKULL
+    };
+    for (int i = 0; i < ROW_MAX; i++) s_title_ic[i] = row_ic[i] ? gbitmap_create_with_resource(row_ic[i]) : NULL;
+    for (int i = 0; i < DIFF_COUNT; i++) s_diff_ic[i] = gbitmap_create_with_resource(diff_ic[i]);
+    s_title_bg = skin_backdrop_layer(root);
     s_title_menu = menu_layer_create(layer_get_bounds(root));
     menu_layer_set_callbacks(s_title_menu, NULL, (MenuLayerCallbacks) {
         .get_num_rows = title_rows, .draw_row = title_draw, .select_click = title_select,
-        .get_header_height = title_hh, .draw_header = title_header
+        .get_header_height = title_hh, .draw_header = title_header,
+        .draw_background = skin_menu_background
     });
-    menu_layer_set_highlight_colors(s_title_menu, COL_FOE, GColorWhite);
+    skin_menu(s_title_menu);
     menu_layer_set_click_config_onto_window(s_title_menu, window);
     layer_add_child(root, menu_layer_get_layer(s_title_menu));
 }
@@ -592,6 +754,14 @@ static void title_load(Window *window) {
 static void title_unload(Window *window) {
     menu_layer_destroy(s_title_menu);
     s_title_menu = NULL;
+    skin_backdrop_layer_destroy(s_title_bg);
+    s_title_bg = NULL;
+    for (int i = 0; i < ROW_MAX; i++) {
+        if (s_title_ic[i]) { gbitmap_destroy(s_title_ic[i]); s_title_ic[i] = NULL; }
+    }
+    for (int i = 0; i < DIFF_COUNT; i++) {
+        if (s_diff_ic[i]) { gbitmap_destroy(s_diff_ic[i]); s_diff_ic[i] = NULL; }
+    }
 }
 
 int main(void) {
@@ -604,14 +774,25 @@ int main(void) {
 
     progress_load();
     load_run();
+#ifdef DD_SHOWCASE
+    // Debug only, for store recordings: a campaign part-way through, in memory
+    // and never saved, so the episode list has open sets and locked bosses.
+    g_prog.unlocked = 3;
+    g_prog.cleared[DIFF_NORMAL] = 0x3;
+    g_prog.cleared[DIFF_EASY] = 0x1;
+    g_run.active = false;
+#endif
 
     s_title_win = window_create();
-    window_set_background_color(s_title_win, COL_BG);
+    window_set_background_color(s_title_win, GColorBlack);
     window_set_window_handlers(s_title_win, (WindowHandlers) {
-        .load = title_load, .appear = title_appear, .unload = title_unload
+        .load = title_load, .appear = title_appear,
+        .disappear = title_disappear, .unload = title_unload
     });
     window_stack_push(s_title_win, true);
+#ifndef DD_BOOT_SCREEN
     splash_window_push();   // sits on top of the title and gets out of the way
+#endif
 
 #ifdef DD_BOOT_FLOOR
 #ifndef DD_BOOT_MODE
@@ -645,6 +826,49 @@ int main(void) {
 #endif
     floor_window_push();
     combat_window_push(DD_BOOT_ENEMY, false);
+#endif
+
+#ifdef DD_BOOT_SCREEN
+    // Debug only: open one menu screen directly, for screenshots and store
+    // assets. The emulator cannot send SELECT reliably, and walking the menus
+    // blind depends on what the last test left saved. Progress is faked in
+    // memory (never saved) so the campaign list has something to show.
+    g_prog.unlocked = 3;
+    g_prog.cleared[DIFF_NORMAL] = 0x3;
+    g_prog.cleared[DIFF_EASY] = 0x1;
+    if (DD_BOOT_SCREEN >= 8) {
+        run_new(MODE_CAMPAIGN, 0, 0);
+        g_run.floor = (uint8_t)(DD_BOOT_ROW ? DD_BOOT_ROW : 1);
+        g_run.gold = 40;
+        run_build_floor();
+        floor_window_push();
+    }
+    switch (DD_BOOT_SCREEN) {
+        case 1: campaign_window_push();
+                if (DD_BOOT_ROW && s_camp_menu)
+                    menu_layer_set_selected_index(s_camp_menu, MenuIndex(0, DD_BOOT_ROW), MenuRowAlignCenter, false);
+                break;
+        case 2: class_window_push(MODE_CAMPAIGN, 0); break;
+        case 3: scores_window_push(); break;
+        case 4: achievements_window_push(); break;
+        case 5: howto_window_push(); break;
+        case 6: gameover_window_push(true, 3, false); break;
+        case 7: gameover_window_push(false, 2, false); break;
+        // Put the counter on a real node of its kind: the shop keeps its sold
+        // marks in its node's arg, so borrowing an enemy node shows nonsense.
+        case 8: case 9: case 10: {
+            static const uint8_t kinds[3] = { NODE_SHOP, NODE_ANVIL, NODE_TRADE };
+            g_run.nodes[3].kind = kinds[DD_BOOT_SCREEN - 8];
+            g_run.nodes[3].arg = 0;
+            g_run.nodes[3].used = false;
+            if (DD_BOOT_SCREEN == 8) shop_window_push(3);
+            else if (DD_BOOT_SCREEN == 9) anvil_window_push(3);
+            else trade_window_push(3);
+            break;
+        }
+        case 11: backpack_window_push(); break;
+        default: break;   // 12: the floor itself
+    }
 #endif
 
     app_event_loop();

@@ -16,7 +16,7 @@ uint8_t run_depth(void) { return g_run.floor; }
 
 uint8_t run_hero_dice(void) {
     uint8_t d = class_dice_for_level(g_run.klass, g_run.level);
-    if (g_run.rule == RULE_SUDDEN) d++;        // the compensation for half health
+    if (g_run.rule == RULE_SUDDEN) d++;        // the compensation for less health
     return (d > MAX_DICE) ? MAX_DICE : d;
 }
 
@@ -119,13 +119,23 @@ uint8_t run_enemy_dice(uint8_t enemy_id) {
 // --- upgrades --------------------------------------------------------------
 bool run_is_upgraded(bool equipped, int index) {
     if (index < 0) return false;
-    return equipped ? ((g_run.equip_up >> index) & 1) : ((g_run.pack_up >> index) & 1);
+    if (equipped) return index < 8 && ((g_run.equip_up >> index) & 1);
+    if (index < 8) return (g_run.pack_up >> index) & 1;
+    return index < 10 && ((g_run.pack_up_hi >> (index - 8)) & 1);
 }
 
 void run_set_upgraded(bool equipped, int index) {
     if (index < 0) return;
-    if (equipped) g_run.equip_up |= (uint8_t)(1 << index);
-    else          g_run.pack_up  |= (uint8_t)(1 << index);
+    if (equipped) { if (index < 8) g_run.equip_up |= (uint8_t)(1 << index); }
+    else if (index < 8) g_run.pack_up |= (uint8_t)(1 << index);
+    else if (index < 10) g_run.pack_up_hi |= (uint8_t)(1 << (index - 8));
+}
+
+void run_clear_upgraded(bool equipped, int index) {
+    if (index < 0) return;
+    if (equipped) { if (index < 8) g_run.equip_up &= (uint8_t)~(1 << index); }
+    else if (index < 8) g_run.pack_up &= (uint8_t)~(1 << index);
+    else if (index < 10) g_run.pack_up_hi &= (uint8_t)~(1 << (index - 8));
 }
 
 // --- floors ----------------------------------------------------------------
@@ -189,8 +199,14 @@ void run_build_floor(void) {
 
     for (uint8_t i = 0; i < 2 && g_run.node_count < MAX_NODES - 1; i++) {
         uint8_t k = kinds[(rand() + i) % kn];
-        // Do not hand out the same support node twice on one floor.
-        if (i == 1 && k == g_run.nodes[g_run.node_count - 1].kind) k = kinds[(k + 1) % kn];
+        // Do not hand out the same support node twice on one floor: step to
+        // the next entry in the list. (This used to index the list by the node
+        // kind itself, which for a trading post landed on the trading post.)
+        if (i == 1 && k == g_run.nodes[g_run.node_count - 1].kind) {
+            uint8_t j = 0;
+            while (j < kn && kinds[j] != k) j++;
+            k = kinds[(j + 1) % kn];
+        }
         g_run.nodes[g_run.node_count].kind = k;
         if (k == NODE_APPLE)      g_run.nodes[g_run.node_count].arg = (uint8_t)(6 + rand() % 5);
         else if (k == NODE_CHEST) g_run.nodes[g_run.node_count].arg = item_roll_for_floor(g_run.floor);
@@ -295,11 +311,28 @@ void save_run(void) {
     persist_write_data(PERSIST_KEY_RUN, &g_run, sizeof(g_run));
 }
 
+// The save is the raw struct, so its size IS the format. pack_up_hi was fitted
+// into trailing padding precisely so this did not change; if it ever has to,
+// bump PERSIST_VERSION as well.
+_Static_assert(sizeof(RunState) == 64, "RunState changed size: bump PERSIST_VERSION");
+
 bool load_run(void) {
     if (!persist_exists(PERSIST_KEY_RUN)) return false;
     if (persist_read_int(PERSIST_KEY_VER) != PERSIST_VERSION) return false;
-    if (persist_read_data(PERSIST_KEY_RUN, &g_run, sizeof(g_run)) != (int)sizeof(g_run)) return false;
+    if (persist_read_data(PERSIST_KEY_RUN, &g_run, sizeof(g_run)) != (int)sizeof(g_run)) {
+        memset(&g_run, 0, sizeof(g_run));    // a short read must not leave half a run
+        return false;
+    }
+    g_run.pack_up_hi &= 0x3;                 // was padding in saves before 1.2
     return g_run.active;
+}
+
+// Called the instant the hero goes down, not when the results screen comes
+// up. The fight's closing toast runs for two seconds, and a run still on disk
+// during them could be revived by quitting and relaunching.
+void run_record_loss(void) {
+    if (g_run.mode == MODE_ENDLESS) progress_submit_score();
+    if (persist_exists(PERSIST_KEY_RUN)) persist_delete(PERSIST_KEY_RUN);
 }
 
 void clear_run(void) {

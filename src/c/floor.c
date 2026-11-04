@@ -1,6 +1,7 @@
 #include "game.h"
 #include "ui.h"
 #include "achieve.h"
+#include "skin.h"
 
 // ---------------------------------------------------------------------------
 // The floor.
@@ -14,6 +15,8 @@
 
 static Window    *s_window;
 static MenuLayer *s_menu;
+static Layer     *s_bg;
+static GBitmap   *s_pack_ic;
 static int8_t     s_pending = -1;   // node we walked into, awaiting its result
 
 // Pushing or removing a window from inside a window's own appear handler is
@@ -23,6 +26,8 @@ static int8_t     s_pending = -1;   // node we walked into, awaiting its result
 typedef enum { FA_NONE = 0, FA_RESUME, FA_OVER_WON, FA_OVER_LOST, FA_LEAVE } FloorAction;
 static FloorAction s_after_appear;
 static AppTimer   *s_after_timer;
+static uint8_t     s_over_floor;      // where the run ended, for the results screen
+static bool        s_over_endless;
 
 static void after_appear(void *ctx) {
     s_after_timer = NULL;
@@ -38,8 +43,8 @@ static void after_appear(void *ctx) {
             }
             break;
         }
-        case FA_OVER_WON:  gameover_window_push(true);  break;
-        case FA_OVER_LOST: gameover_window_push(false); break;
+        case FA_OVER_WON:  gameover_window_push(true, s_over_floor, s_over_endless);  break;
+        case FA_OVER_LOST: gameover_window_push(false, s_over_floor, s_over_endless); break;
         case FA_LEAVE:     if (s_window) window_stack_remove(s_window, false); break;
         default: break;
     }
@@ -73,6 +78,16 @@ static void icons_unload(void) {
     }
 }
 
+// Three depths, each darker than the last; Endless cycles them.
+uint32_t floor_backdrop(void) {
+    static const uint32_t ids[3] = {
+        RESOURCE_ID_BD_DUN_FLOOR1, RESOURCE_ID_BD_DUN_FLOOR2, RESOURCE_ID_BD_DUN_FLOOR3
+    };
+    uint8_t f = (uint8_t)(g_run.floor ? g_run.floor - 1 : 0);
+    if (g_run.mode == MODE_ENDLESS) return ids[f % 3];
+    return ids[f < 3 ? f : 2];
+}
+
 static bool door_open(void) { return g_run.foes_cleared >= g_run.foes_required; }
 
 static void node_line(const Node *n, char *title, size_t tl, char *sub, size_t sl) {
@@ -92,6 +107,7 @@ static void node_line(const Node *n, char *title, size_t tl, char *sub, size_t s
                     if (dice < MAX_FOE_DICE) dice++;
                     gold = (uint16_t)(gold * ELITE_GOLD_MUL);
                 }
+                if (g_run.rule == RULE_SUDDEN) gold *= 2;   // as combat pays it
                 snprintf(sub, sl, "%d HP  %d dice  %dg%s",
                          hp, dice, gold, elite ? "  +rare" : "");
             }
@@ -148,16 +164,18 @@ static int16_t get_header_height(MenuLayer *m, uint16_t s, void *c) {
 static void draw_header(GContext *ctx, const Layer *cell, uint16_t section, void *data) {
     GRect r = ui_cell_inset(layer_get_bounds(cell));
     char a[40], b[40];
-    if (g_run.mode == MODE_ENDLESS) snprintf(a, sizeof(a), "Endless - Floor %d", g_run.floor);
-    else snprintf(a, sizeof(a), "Floor %d/%d - %s", g_run.floor, FLOOR_COUNT, rule_name((RuleId)g_run.rule));
-    snprintf(b, sizeof(b), "HP %d/%d  %dg  Lv%d", g_run.hp, g_run.max_hp, g_run.gold, g_run.level);
-    if (g_run.curse != CURSE_NONE) {
-        snprintf(a, sizeof(a), "%s - %s", rule_name((RuleId)g_run.rule), curse_name(g_run.curse));
+    // On Hard the floor's curse takes the ruleset's place on the first line --
+    // never the floor number, which is the thing you most need to know.
+    const char *what = (g_run.curse != CURSE_NONE) ? curse_name(g_run.curse) : rule_name((RuleId)g_run.rule);
+    if (g_run.mode == MODE_ENDLESS) {
+        if (g_run.curse != CURSE_NONE) snprintf(a, sizeof(a), "Endless %d - %s", g_run.floor, what);
+        else snprintf(a, sizeof(a), "Endless - Floor %d", g_run.floor);
+    } else {
+        snprintf(a, sizeof(a), "Floor %d/%d - %s", g_run.floor, FLOOR_COUNT, what);
     }
-    ui_draw_text_c(ctx, a, ui_font_tiny(), GRect(r.origin.x + 4, r.origin.y, r.size.w - 8, 16),
-                   COL_INK, GTextAlignmentCenter);
-    ui_draw_text_c(ctx, b, ui_font_tiny(), GRect(r.origin.x + 4, r.origin.y + 16, r.size.w - 8, 16),
-                   COL_INK, GTextAlignmentCenter);
+    snprintf(b, sizeof(b), "HP %d/%d  %dg  Lv%d", g_run.hp, g_run.max_hp, g_run.gold, g_run.level);
+    (void)r;
+    skin_header(ctx, cell, a, b);
 }
 
 static void draw_row(GContext *ctx, const Layer *cell, MenuIndex *idx, void *data) {
@@ -167,13 +185,16 @@ static void draw_row(GContext *ctx, const Layer *cell, MenuIndex *idx, void *dat
         for (int i = 0; i < MAX_BACKPACK; i++) if (g_run.pack[i] != ITEM_NONE) owned++;
         snprintf(title, sizeof(title), "Backpack");
         snprintf(sub, sizeof(sub), "%d spare", owned);
-        menu_cell_basic_draw(ctx, cell, title, sub, NULL);
+        skin_cell(ctx, cell, title, sub, s_pack_ic, 0);
         return;
     }
     const Node *n = &g_run.nodes[idx->row];
     node_line(n, title, sizeof(title), sub, sizeof(sub));
     GBitmap *icon = (n->kind < sizeof(s_icons) / sizeof(s_icons[0])) ? s_icons[n->kind] : NULL;
-    menu_cell_basic_draw(ctx, cell, title, sub, icon);
+    // A shut door is drawn as a silhouette; anything spent is dimmed.
+    uint8_t flags = (n->kind == NODE_DOOR) ? (door_open() ? 0 : SKIN_LOCKED)
+                  : (n->used && n->kind != NODE_SHOP) ? SKIN_DONE : 0;
+    skin_cell(ctx, cell, title, sub, icon, flags);
 }
 
 static void select_row(MenuLayer *m, MenuIndex *idx, void *c) {
@@ -228,6 +249,8 @@ static void select_row(MenuLayer *m, MenuIndex *idx, void *c) {
             if (!door_open()) { vibes_short_pulse(); return; }
             run_descend();
             if (g_run.mode == MODE_ENDLESS && g_run.floor >= 10) ach_unlock(ACH_DEPTH_10);
+            skin_show(s_window, floor_backdrop(), SKIN_DUNGEON);   // one floor deeper
+            if (s_bg) layer_mark_dirty(s_bg);
             menu_layer_set_selected_index(s_menu, MenuIndex(0, 0), MenuRowAlignCenter, false);
             menu_layer_reload_data(s_menu);
             break;
@@ -249,10 +272,13 @@ static void elimination_toll(void) {
     if (n <= floor_by_diff[d]) return;
     int pick = owned[rand() % n];
     g_run.equip[pick] = ITEM_NONE;
-    g_run.equip_up &= (uint8_t)~(1 << pick);
+    run_clear_upgraded(true, pick);
 }
 
+static void window_disappear(Window *window) { skin_hide(window); }
+
 static void window_appear(Window *window) {
+    skin_show(window, floor_backdrop(), SKIN_DUNGEON);
     // Walked out of a fight (or the watch died mid-fight): go straight back in.
     if (g_run.active && g_run.in_fight && g_last_battle == BATTLE_NONE) {
         uint8_t node = g_run.fight_node;
@@ -283,6 +309,8 @@ static void window_appear(Window *window) {
         save_run();
 
         if (was_boss && g_run.mode == MODE_CAMPAIGN) {
+            s_over_floor = g_run.floor;
+            s_over_endless = false;
             progress_mark_cleared(g_run.campaign_level);
             ach_unlock(ACH_CLEAR_EPISODE);
             g_run.active = false;
@@ -293,8 +321,11 @@ static void window_appear(Window *window) {
             return;
         }
     } else if (g_last_battle == BATTLE_LOST) {
+        // combat.c's run_record_loss has already submitted any Endless score
+        // and taken the run off disk, the moment the hero went down.
         g_run.in_fight = false;
-        if (g_run.mode == MODE_ENDLESS) progress_submit_score();
+        s_over_floor = g_run.floor;
+        s_over_endless = (g_run.mode == MODE_ENDLESS);
         g_run.active = false;
         clear_run();
         g_last_battle = BATTLE_NONE;
@@ -312,16 +343,19 @@ static void window_appear(Window *window) {
 
 static void window_load(Window *window) {
     icons_load();
+    s_pack_ic = gbitmap_create_with_resource(RESOURCE_ID_IC_BACKPACK);
     Layer *root = window_get_root_layer(window);
+    s_bg = skin_backdrop_layer(root);
     s_menu = menu_layer_create(layer_get_bounds(root));
     menu_layer_set_callbacks(s_menu, NULL, (MenuLayerCallbacks) {
         .get_num_rows = get_num_rows,
         .draw_row = draw_row,
         .select_click = select_row,
         .get_header_height = get_header_height,
-        .draw_header = draw_header
+        .draw_header = draw_header,
+        .draw_background = skin_menu_background
     });
-    menu_layer_set_highlight_colors(s_menu, COL_FOE, GColorWhite);
+    skin_menu(s_menu);
     menu_layer_set_click_config_onto_window(s_menu, window);
     layer_add_child(root, menu_layer_get_layer(s_menu));
 }
@@ -330,18 +364,26 @@ static void window_unload(Window *window) {
     if (s_after_timer) { app_timer_cancel(s_after_timer); s_after_timer = NULL; }
     s_after_appear = FA_NONE;
     icons_unload();
+    if (s_pack_ic) { gbitmap_destroy(s_pack_ic); s_pack_ic = NULL; }
     menu_layer_destroy(s_menu);
     s_menu = NULL;
+    skin_backdrop_layer_destroy(s_bg);
+    s_bg = NULL;
     window_destroy(s_window);
     s_window = NULL;
 }
 
 void floor_window_push(void) {
+    // Each screen keeps its window and layers in file statics. An animated pop
+    // unloads only when the slide ends, so a second push landing in that gap
+    // would have the old unload destroy the new window. Refuse it instead.
+    if (s_window) return;
     s_pending = -1;
     s_window = window_create();
-    window_set_background_color(s_window, COL_BG);
+    window_set_background_color(s_window, GColorBlack);
     window_set_window_handlers(s_window, (WindowHandlers) {
-        .load = window_load, .appear = window_appear, .unload = window_unload
+        .load = window_load, .appear = window_appear, .disappear = window_disappear,
+        .unload = window_unload
     });
     window_stack_push(s_window, true);
 }

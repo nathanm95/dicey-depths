@@ -1,5 +1,6 @@
 #include "game.h"
 #include "ui.h"
+#include "skin.h"
 
 // ---------------------------------------------------------------------------
 // The backpack.
@@ -11,6 +12,7 @@
 
 static Window    *s_window;
 static MenuLayer *s_menu;
+static Layer     *s_bg;
 
 static int pack_count(void) {
     int n = 0;
@@ -34,13 +36,10 @@ static uint16_t get_num_rows(MenuLayer *m, uint16_t s, void *c) {
     return (s == 0) ? run_equip_slots() : (uint16_t)pack_count();
 }
 
-static int16_t get_header_height(MenuLayer *m, uint16_t s, void *c) { return 18; }
+static int16_t get_header_height(MenuLayer *m, uint16_t s, void *c) { return 20; }
 
 static void draw_header(GContext *ctx, const Layer *cell, uint16_t section, void *data) {
-    GRect r = ui_cell_inset(layer_get_bounds(cell));
-    ui_draw_text_c(ctx, section == 0 ? "In the grid (tap to remove)" : "Spare (tap to equip)",
-                   ui_font_tiny(), GRect(r.origin.x + 4, r.origin.y, r.size.w - 8, 16),
-                   COL_INK, GTextAlignmentLeft);
+    skin_header(ctx, cell, section == 0 ? "In the grid (tap to remove)" : "Spare (tap to equip)", NULL);
 }
 
 static void item_row(uint8_t id, bool upgraded, char *t, size_t tl, char *s, size_t sl) {
@@ -61,11 +60,13 @@ static void item_row(uint8_t id, bool upgraded, char *t, size_t tl, char *s, siz
 
 static void draw_row(GContext *ctx, const Layer *cell, MenuIndex *idx, void *data) {
     char t[44], s[56];
+    uint8_t flags = 0;
     if (idx->section == 0) {
         uint8_t id = g_run.equip[idx->row];
         if (id == ITEM_NONE) {
             snprintf(t, sizeof(t), "Slot %d", idx->row + 1);
             snprintf(s, sizeof(s), "empty");
+            flags = SKIN_DONE;
         } else {
             item_row(id, run_is_upgraded(true, idx->row), t, sizeof(t), s, sizeof(s));
         }
@@ -74,7 +75,7 @@ static void draw_row(GContext *ctx, const Layer *cell, MenuIndex *idx, void *dat
         if (pi < 0) return;
         item_row(g_run.pack[pi], run_is_upgraded(false, pi), t, sizeof(t), s, sizeof(s));
     }
-    menu_cell_basic_draw(ctx, cell, t, s, NULL);
+    skin_cell(ctx, cell, t, s, NULL, flags);
 }
 
 static void select_row(MenuLayer *m, MenuIndex *idx, void *c) {
@@ -86,9 +87,9 @@ static void select_row(MenuLayer *m, MenuIndex *idx, void *c) {
             if (g_run.pack[i] != ITEM_NONE) continue;
             g_run.pack[i] = id;
             if (run_is_upgraded(true, idx->row)) run_set_upgraded(false, i);
-            else g_run.pack_up &= (uint8_t)~(1 << i);
+            else run_clear_upgraded(false, i);
             g_run.equip[idx->row] = ITEM_NONE;
-            g_run.equip_up &= (uint8_t)~(1 << idx->row);
+            run_clear_upgraded(true, idx->row);
             save_run();
             menu_layer_reload_data(s_menu);
             return;
@@ -103,15 +104,19 @@ static void select_row(MenuLayer *m, MenuIndex *idx, void *c) {
     if (slot < 0) { vibes_short_pulse(); return; }
     g_run.equip[slot] = g_run.pack[pi];
     if (run_is_upgraded(false, pi)) run_set_upgraded(true, slot);
-    else g_run.equip_up &= (uint8_t)~(1 << slot);
+    else run_clear_upgraded(true, slot);
     g_run.pack[pi] = ITEM_NONE;
-    g_run.pack_up &= (uint8_t)~(1 << pi);
+    run_clear_upgraded(false, pi);
     save_run();
     menu_layer_reload_data(s_menu);
 }
 
+static void window_appear(Window *window)    { skin_show(window, floor_backdrop(), SKIN_DUNGEON); }
+static void window_disappear(Window *window) { skin_hide(window); }
+
 static void window_load(Window *window) {
     Layer *root = window_get_root_layer(window);
+    s_bg = skin_backdrop_layer(root);
     s_menu = menu_layer_create(layer_get_bounds(root));
     menu_layer_set_callbacks(s_menu, NULL, (MenuLayerCallbacks) {
         .get_num_sections = get_num_sections,
@@ -119,9 +124,10 @@ static void window_load(Window *window) {
         .draw_row = draw_row,
         .select_click = select_row,
         .get_header_height = get_header_height,
-        .draw_header = draw_header
+        .draw_header = draw_header,
+        .draw_background = skin_menu_background
     });
-    menu_layer_set_highlight_colors(s_menu, COL_HERO, GColorWhite);
+    skin_menu(s_menu);
     menu_layer_set_click_config_onto_window(s_menu, window);
     layer_add_child(root, menu_layer_get_layer(s_menu));
 }
@@ -129,15 +135,22 @@ static void window_load(Window *window) {
 static void window_unload(Window *window) {
     menu_layer_destroy(s_menu);
     s_menu = NULL;
+    skin_backdrop_layer_destroy(s_bg);
+    s_bg = NULL;
     window_destroy(s_window);
     s_window = NULL;
 }
 
 void backpack_window_push(void) {
+    // Each screen keeps its window and layers in file statics. An animated pop
+    // unloads only when the slide ends, so a second push landing in that gap
+    // would have the old unload destroy the new window. Refuse it instead.
+    if (s_window) return;
     s_window = window_create();
-    window_set_background_color(s_window, COL_BG);
+    window_set_background_color(s_window, GColorBlack);
     window_set_window_handlers(s_window, (WindowHandlers) {
-        .load = window_load, .unload = window_unload
+        .load = window_load, .appear = window_appear, .disappear = window_disappear,
+        .unload = window_unload
     });
     window_stack_push(s_window, true);
 }

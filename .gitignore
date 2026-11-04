@@ -3,3 +3,6 @@ build/
 *.pbw
 node_modules/
 .DS_Store
+__pycache__/
+tools/hostsim/fuzz_touch_round
+tools/hostsim/fuzz_touch_round.dSYM/

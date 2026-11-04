@@ -1,5 +1,6 @@
 #include "game.h"
 #include "ui.h"
+#include "skin.h"
 #include "anim.h"
 #include "portraits.h"
 #include "combat.h"
@@ -151,15 +152,58 @@ static void redraw(void)   { if (s_layer) layer_mark_dirty(s_layer); }
 // --- toast -----------------------------------------------------------------
 // The firmware has no vsnprintf, so the variadic part lives in a macro and the
 // formatting is done by snprintf at the call site.
-static void toast_raw(const char *s) {
-    if (s != s_toast) strncpy(s_toast, s, sizeof(s_toast) - 1);
+//
+// Several things can happen in one instant -- a hit that charges the Limit
+// Break, two statuses landing at the roll -- and each used to overwrite the
+// last, so only one was ever read. They queue instead, and a toast with others
+// waiting behind it only holds for TOAST_SHORT_MS so the queue keeps pace.
+#define TOAST_Q        3
+#define TOAST_SHORT_MS 900
+static char    s_toast_next[64];
+static char    s_toast_q[TOAST_Q][64];
+static uint8_t s_toast_qn;
+
+static void toast_start(const char *s) {
+    strncpy(s_toast, s, sizeof(s_toast) - 1);
     s_toast[sizeof(s_toast) - 1] = '\0';
     s_toast_on = true;
-    tw_start(&s_toast_t, TOAST_MS);
+    tw_start(&s_toast_t, s_toast_qn ? TOAST_SHORT_MS : TOAST_MS);
 }
+
+static void toast_raw(const char *s) {
+    if (!s_toast_on || !tw_running(&s_toast_t)) { toast_start(s); return; }
+    if (s_toast_qn == TOAST_Q) {            // full: the newest news wins
+        memmove(s_toast_q[0], s_toast_q[1], sizeof(s_toast_q[0]) * (TOAST_Q - 1));
+        s_toast_qn--;
+    }
+    strncpy(s_toast_q[s_toast_qn], s, sizeof(s_toast_q[0]) - 1);
+    s_toast_q[s_toast_qn][sizeof(s_toast_q[0]) - 1] = '\0';
+    s_toast_qn++;
+}
+
+// The current toast is over: show the next one waiting, if any.
+static void toast_advance(void) {
+    if (!s_toast_qn) { s_toast_on = false; return; }
+    char next[64];
+    memcpy(next, s_toast_q[0], sizeof(next));
+    memmove(s_toast_q[0], s_toast_q[1], sizeof(s_toast_q[0]) * (TOAST_Q - 1));
+    s_toast_qn--;
+    toast_start(next);
+}
+
+// For the last word of a fight: drop whatever is queued and say this now.
+static void toast_now_raw(const char *s) {
+    s_toast_qn = 0;
+    toast_start(s);
+}
+
 #define toast(...) do { \
-        snprintf(s_toast, sizeof(s_toast), __VA_ARGS__); \
-        toast_raw(s_toast); \
+        snprintf(s_toast_next, sizeof(s_toast_next), __VA_ARGS__); \
+        toast_raw(s_toast_next); \
+    } while (0)
+#define toast_now(...) do { \
+        snprintf(s_toast_next, sizeof(s_toast_next), __VA_ARGS__); \
+        toast_now_raw(s_toast_next); \
     } while (0)
 
 // --- floaters --------------------------------------------------------------
@@ -257,7 +301,8 @@ static void heal_up(Combatant *t, int16_t amount, bool is_hero) {
     if (amount <= 0) return;
     t->hp += amount;
     if (t->hp > t->max_hp) t->hp = t->max_hp;
-    if (is_hero)    float_spawn(is_hero ? GPoint(s_L.hero_strip.origin.x + 30, s_L.hero_strip.origin.y)
+    // Both sides: a foe that drains health back should be seen doing it.
+    float_spawn(is_hero ? GPoint(s_L.hero_strip.origin.x + 30, s_L.hero_strip.origin.y)
                         : GPoint(s_L.portrait.origin.x + s_L.portrait.size.w / 2,
                                  s_L.portrait.origin.y + s_L.portrait.size.h / 2),
                 amount, COL_OK);
@@ -328,9 +373,21 @@ static void fire_card(Card *c, bool by_hero) {
             tw_start(&pool[di].settle, 480);
             tw_stop(&pool[di].fly);
             if (c->uses_left > 0) c->uses_left--;
-            if (c->uses_left == 0) c->spent = true;
             tw_start(&c->fx, 420);
-            if (by_hero) toast("Reroll: %d becomes %d  (%d left)", before, pool[di].pips, c->uses_left);
+            if (item_is_reroll(c->id)) {
+                if (c->uses_left == 0) c->spent = true;
+                if (by_hero) toast("Reroll: %d becomes %d  (%d left)", before, pool[di].pips, c->uses_left);
+            } else {
+                // Any other card that rerolls (Gambit) is an ordinary card that
+                // happens to hand the die back: it still fires once a turn, and
+                // still pays its second effect, which this branch used to skip.
+                bool up = c->upgraded && !item_upgrade_widens(c->id);
+                apply_effects(d, before, before, by_hero, c->weakened, up);
+                c->weakened = false;
+                c->spent = true;
+                if (by_hero) toast("%s: %d becomes %d", d->name, before, pool[di].pips);
+                check_end();
+            }
         }
         return;
     }
@@ -467,19 +524,33 @@ static void roll_side(bool hero) {
         if (hero) toast(parallel() ? "Burn: usable, but it jams the card"
                                    : "Burn: a die is alight, 2 HP to put out");
     }
-    if (cb->status[ST_SHOCK] > 0 && cardn > 0) {
-        cards[rand() % cardn].disabled = true;
+    // A status that targets a card picks one that exists: the grid has empty
+    // slots, and a Shock spent on one was a status wasted and a toast that lied.
+    int8_t pick = -1;
+    {
+        uint8_t real = 0;
+        for (int i = 0; i < cardn; i++) if (cards[i].id != ITEM_NONE) real++;
+        if (real) {
+            uint8_t k = (uint8_t)(rand() % real);
+            for (int i = 0; i < cardn; i++) {
+                if (cards[i].id == ITEM_NONE) continue;
+                if (k-- == 0) { pick = (int8_t)i; break; }
+            }
+        }
+    }
+    if (cb->status[ST_SHOCK] > 0 && pick >= 0) {
+        cards[pick].disabled = true;
         cb->status[ST_SHOCK]--;
         if (hero) toast("Shocked: drop any die on it to clear");
     }
-    if (cb->status[ST_WEAKEN] > 0 && cardn > 0) {
-        cards[rand() % cardn].weakened = true;
+    if (cb->status[ST_WEAKEN] > 0 && pick >= 0) {
+        cards[pick].weakened = true;
         cb->status[ST_WEAKEN]--;
         if (hero) toast("Weakened: one card does half");
     }
     if (cb->status[ST_POISON] > 0) {
-        if (parallel() && cardn > 0) {
-            cards[rand() % cardn].jam = 2;      // infects a card instead of you
+        if (parallel() && pick >= 0) {
+            cards[pick].jam = 2;                // infects a card instead of you
             if (hero) toast("Poison infects a card");
         } else {
             deal_damage(cb, 3, true, hero);
@@ -487,8 +558,22 @@ static void roll_side(bool hero) {
         }
         cb->status[ST_POISON]--;
     }
+}
+
+// Blind and Silence are about the turn they land on, so they wear off when that
+// side's turn ENDS. Counting them down at the roll -- as every other status is
+// -- meant a Blind or Silence the enemy dealt was gone before the player's turn
+// it was aimed at had started, and never did anything.
+static void expire_turn_statuses(Combatant *cb) {
     if (cb->status[ST_BLIND] > 0) cb->status[ST_BLIND]--;
     if (cb->status[ST_SILENCE] > 0) cb->status[ST_SILENCE]--;
+}
+
+static void drop_drag(void) {
+    s_dragging = false;
+    s_drag_die = -1;
+    s_hover_card = -1;
+    s_touch_live = false;
 }
 
 static void begin_player_turn(void) {
@@ -568,7 +653,9 @@ static void foe_step(void *ctx);
 
 static void begin_foe_turn(void) {
     s_phase = PHASE_FOE;
+    drop_drag();
     roll_side(false);
+    check_end();            // Poison at its roll can finish it before it acts
     if (s_phase == PHASE_OVER) return;
     plan_foe_turn();
     toast("%s rolls...", enemy_def(s_foe_id)->name);
@@ -579,7 +666,7 @@ static void begin_foe_turn(void) {
 static void foe_step(void *ctx) {
     s_foe_timer = NULL;
     if (s_phase != PHASE_FOE) return;
-    if (s_plan_i >= s_plan_n) { begin_player_turn(); return; }
+    if (s_plan_i >= s_plan_n) { expire_turn_statuses(&s_foe); begin_player_turn(); return; }
 
     int8_t ci = s_plan_card[s_plan_i];
     int8_t di = s_plan_die[s_plan_i];
@@ -596,7 +683,20 @@ static void finish(void *ctx) { if (s_window) window_stack_remove(s_window, true
 
 static void check_end(void) {
     if (s_phase == PHASE_OVER) return;
-    if (s_foe.hp <= 0) {
+    // The hero first: a killing blow that also takes the hero down (Backfire's
+    // recoil) is a loss. Testing the foe first let a fight be won at 0 HP and
+    // carried out of it, to lose the next one the moment it opened.
+    if (s_hero.hp <= 0) {
+        s_phase = PHASE_OVER;
+        g_last_battle = BATTLE_LOST;
+        g_run.hp = 0;
+        g_run.in_fight = false;
+        drop_drag();
+        run_record_loss();
+        toast_now("You are out of the game.");
+        if (s_foe_timer) { app_timer_cancel(s_foe_timer); s_foe_timer = NULL; }
+        app_timer_register(1900, finish, NULL);
+    } else if (s_foe.hp <= 0) {
         s_phase = PHASE_OVER;
         g_last_battle = BATTLE_WON;
         tw_start(&s_death, 900);
@@ -604,24 +704,21 @@ static void check_end(void) {
         uint16_t gold = d->gold;
         if (s_elite) gold *= ELITE_GOLD_MUL;
         if (g_run.rule == RULE_SUDDEN) gold *= 2;    // Sudden Death pays double
+        // Not saved here. The floor records the win -- gold, health, the node
+        // beaten -- all in one save when it reappears. Saving the gold now and
+        // the node later let a quit during the closing toast keep the gold and
+        // leave the enemy standing to be farmed again; now such a quit simply
+        // replays the fight.
         g_run.hp = s_hero.hp;
         g_run.gold += gold;
         g_run.in_fight = false;
-        save_run();
+        drop_drag();
         ach_unlock(ACH_FIRST_WIN);
         if (s_elite) ach_unlock(ACH_ELITE);
         if (s_hero.hp >= s_hp_at_start) ach_unlock(ACH_UNTOUCHED);
-        toast("%s is out! +%d gold", d->name, gold);
+        toast_now("%s is out! +%d gold", d->name, gold);
         if (s_foe_timer) { app_timer_cancel(s_foe_timer); s_foe_timer = NULL; }
         app_timer_register(2100, finish, NULL);
-    } else if (s_hero.hp <= 0) {
-        s_phase = PHASE_OVER;
-        g_last_battle = BATTLE_LOST;
-        g_run.hp = 0;
-        g_run.in_fight = false;
-        toast("You are out of the game.");
-        if (s_foe_timer) { app_timer_cancel(s_foe_timer); s_foe_timer = NULL; }
-        app_timer_register(1900, finish, NULL);
     }
 }
 
@@ -776,6 +873,7 @@ static void cpu_push(bool guaranteed) {
 static void end_turn(void) {
     if (s_phase != PHASE_PLAYER) return;
     g_run.hp = s_hero.hp;
+    expire_turn_statuses(&s_hero);
     begin_foe_turn();
 }
 
@@ -786,6 +884,9 @@ static void do_action(int8_t a) {
                 // A charged Limit Break turns PUSH into AUTOROLL: the Robot's
                 // "guaranteed jackpot", spent as a risk-free six.
                 if (g_run.limit_ready && s_hero.status[ST_SILENCE] == 0) {
+                    // Nothing to build or nowhere to put it: let cpu_push say
+                    // so, and keep the charge rather than throwing it away.
+                    if (s_builds_left == 0 || s_dice_n >= MAX_DICE) { cpu_push(true); break; }
                     g_run.limit_ready = false;
                     g_run.limit_charge = 0;
                     save_run();
@@ -1216,12 +1317,12 @@ static void draw_hero_strip(GContext *ctx, const Layout *L) {
 static void draw_actions(GContext *ctx, const Layout *L) {
     char fury[16], push[16];
     int pct = (int)(g_run.max_hp ? (g_run.limit_charge * 100 / g_run.max_hp) : 0);
-    const char *labels[ACTION_MAX];
+    const char *labels[ACTION_MAX] = { "", "", "" };
 
     if (is_robot()) {
         // PUSH becomes AUTO once the Limit Break is charged: same button, and
         // the difference between a gamble and a certainty.
-        if (g_run.limit_ready) snprintf(push, sizeof(push), "AUTO");
+        if (g_run.limit_ready && s_hero.status[ST_SILENCE] == 0) snprintf(push, sizeof(push), "AUTO");
         else                   snprintf(push, sizeof(push), "PUSH %d%%", pct);
         labels[0] = push;
         labels[1] = "BANK";
@@ -1267,7 +1368,7 @@ static void draw_floaters(GContext *ctx) {
 
 static void draw_toast(GContext *ctx, const Layout *L) {
     if (!s_toast_on) return;
-    if (!tw_running(&s_toast_t)) { s_toast_on = false; return; }
+    if (!tw_running(&s_toast_t)) { toast_advance(); if (!s_toast_on) return; }
     int32_t p = tw_p(&s_toast_t);
     // The toast sits over the ENEMY, never over the cards. While you are
     // deciding, your grid and your dice are the two things you cannot afford to
@@ -1279,7 +1380,10 @@ static void draw_toast(GContext *ctx, const Layout *L) {
     int16_t off = 0;
     if (p < 120)      off = (int16_t)(-h + (h * p) / 120);
     else if (p > 880) off = (int16_t)(-(h * (p - 880)) / 120);
-    GRect r = ui_band(&L->bounds, (int16_t)(y + off), h, 3);
+    // Fitted to the glass where it comes to rest, then slid: measuring the band
+    // mid-slide, up where the round screen is narrow, squeezed it to a sliver.
+    GRect r = ui_band(&L->bounds, y, h, 3);
+    r.origin.y = (int16_t)(r.origin.y + off);
     ui_draw_panel(ctx, r, GColorWhite, COL_INK, true);
     ui_draw_text_c(ctx, s_toast, ui_font_tiny(),
                    GRect((int16_t)(r.origin.x + 4), (int16_t)(r.origin.y + 4),
@@ -1424,8 +1528,11 @@ static void touch_handler(const TouchEvent *e, void *ctx) {
     // An unarmed contact — the touch that woke the watch — must never play a
     // die. The flag is latched at Touchdown and carried for the whole gesture.
     if (e->non_navigational) return;
-    if (s_show_kit) { if (e->type == TouchEvent_Liftoff) { s_show_kit = false; } return; }
-    if (s_phase != PHASE_PLAYER) return;
+    // A finger can lift after the kit panel opened or the turn ended under it
+    // (a long SELECT, or SELECT on END mid-drag). The drag still has to end,
+    // or a ghost die hangs over the screen and the next swipe is swallowed.
+    if (s_show_kit) { if (e->type == TouchEvent_Liftoff) { s_show_kit = false; drop_drag(); } return; }
+    if (s_phase != PHASE_PLAYER) { if (e->type == TouchEvent_Liftoff) drop_drag(); return; }
 
     const Layout *L = &s_L;
     GPoint p = GPoint(e->x, e->y);
@@ -1475,6 +1582,14 @@ static void touch_handler(const TouchEvent *e, void *ctx) {
                 s_grid_row = (int8_t)(s_grid_row + (dy < 0 ? 1 : -1));
                 if (s_grid_row < 0) s_grid_row = 0;
                 if (s_grid_row > grid_max_row()) s_grid_row = grid_max_row();
+                // Bring the cursor along, so SELECT never acts on a card that
+                // has scrolled out of sight.
+                if (s_cursor >= 0 && s_cursor < s_card_n &&
+                    (s_cursor / 2 < s_grid_row || s_cursor / 2 > s_grid_row + 1)) {
+                    for (int i = s_grid_row * 2; i < s_card_n && i < (s_grid_row + 2) * 2; i++) {
+                        if (s_cards[i].id != ITEM_NONE) { s_cursor = (int8_t)i; break; }
+                    }
+                }
                 s_drag_die = -1;
                 redraw();
                 break;
@@ -1683,6 +1798,14 @@ static void window_unload(Window *window) {
 }
 
 void combat_window_push(uint8_t enemy_id, bool elite) {
+    // Each screen keeps its window and layers in file statics. An animated pop
+    // unloads only when the slide ends, so a second push landing in that gap
+    // would have the old unload destroy the new window. Refuse it instead.
+    if (s_window) return;
+    // The floor's backdrop would otherwise still be loaded while this window
+    // loads -- 34KB on the Round 2 -- because the floor only lets go of it
+    // when it disappears, which is after this window's load has run.
+    skin_release();
     const EnemyDef *ed = enemy_def(enemy_id);
     s_foe_id = enemy_id;
     s_elite = elite;
@@ -1746,6 +1869,7 @@ void combat_window_push(uint8_t enemy_id, bool elite) {
     s_dragging = false;
     s_touch_live = false;
     s_toast_on = false;
+    s_toast_qn = 0;
     s_show_kit = false;
     s_phase = PHASE_PLAYER;
 

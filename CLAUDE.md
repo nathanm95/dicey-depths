@@ -44,17 +44,21 @@ src/c/
   items.c       equipment catalogue, curated loot tables, status text
   enemies.c     enemy roster including one boss per campaign level
   rules.c       the five campaign rulesets plus three Bonus Rounds
-  sound.c       chiptune SFX and the persisted on/off toggle
   achieve.c     achievements
   portraits.c   procedural enemy art — flat shapes, no PNG assets
   ui.c/.h       round-aware layout, palette, dice, HP bars
+  skin.c/.h     painted menus: backdrop loader, see-through MenuLayer rows, row icons
   anim.c/.h     integer tween toolkit (no FPU on this hardware)
 docs/
   DESIGN-BREAKDOWN.pdf   the source design analysis this was built from
   reference/             screenshots of the original for art direction
   art/pebble64.png       the 64 colours the hardware can show
 store/                   listing assets — NOT watch resources, see store/README.md
-tools/                   make_palette.py, verify_art.py
+art/raw/                 PixelLab originals (backdrops, icons, banner stage) -- not shipped
+art/dicey/               Dicey cut out of the store icon -- the source of every Dicey
+art/preview/             what each backdrop looks like on the watch (generated)
+tools/                   make_menu_art.py, cut_dicey.py, make_menu_icon.py, make_banner.py,
+                         record_preview.py, shot.py, make_palette.py, verify_art.py, ...
 ```
 
 ## Conventions specific to this project
@@ -85,7 +89,10 @@ tools/                   make_palette.py, verify_art.py
   drag, so it is the only path that can be verified until real hardware exists. The cursor
   skips empty grid slots and still renders when it lands on one.
 
-- **Combat owns its own touch.** `window_set_touch_bridge_disabled(window, true)` in
+- **Combat owns its own touch** -- but no longer disables the bridge (1.1.1 removed
+  `window_set_touch_bridge_disabled` from every window, as a mitigation for a Time 2 reboot
+  report; see that commit). What follows is the original reasoning.
+  `window_set_touch_bridge_disabled(window, true)` in
   `combat.c`'s `window_appear` takes the touch stream off the system gesture bridge, because
   the grid is a drag surface and not a list to be swiped. Every other screen is a MenuLayer
   and relies on the bridge, which is why `main()` calls `app_touch_navigation_enable(true)` —
@@ -152,7 +159,7 @@ Agreed up front; don't relitigate without asking.
 - **The Reroll card is the one deliberate exception** to once-per-turn, and is always in the
   Warrior's starting kit. Feeding it a die rerolls THAT die and returns it to the tray
   unspent, so its cost is one of its own uses rather than the die. Its allowance is refilled
-  every turn to `dice - 1`, which is how "more dice" also means "more second chances". There
+  every turn to one per die (it was `dice - 1`; the Warrior needed the help), which is how "more dice" also means "more second chances". There
   is no reroll button; the action bar is Limit Break and End Turn only (`ACTION_COUNT`).
 - **Permadeath.** Lose a fight and the run is over.
 - **Campaign: five levels, each a ruleset** (`rules.c`) rather than a difficulty step, each
@@ -223,6 +230,53 @@ Two separate traps, both of which shipped before being caught:
   with `ui_cell_inset()`, which insets to the inscribed square — safe at every y.
   `menu_cell_basic_draw()` handles this itself; anything drawing its own text does not.
 
+## Menus are painted (1.2)
+
+Every list screen sits on a full-screen PixelLab backdrop: a **game-show stage** for the
+title, splash, class select, campaign, best runs, achievements and results, and a
+**dungeon** for the floor map, backpack, shop, anvil and trading post during a run. The
+campaign list swaps its set to the highlighted episode, like Zuma's temples, and shows each
+episode's boss -- as a grey silhouette until it is unlocked. How to play alone is plain dark
+blue: a page of small text over art was hard work to read.
+
+The screens are still **MenuLayers** -- scrolling, the round display's centre focus and
+the system touch navigation are untouched. `skin.c` makes the rows see-through and draws
+the cells: shadowed light text, a red-and-gold (stage) or olive-and-amber (dungeon)
+highlight bar, an icon on the left.
+
+- **Every skinned MenuLayer must pass `.draw_background = skin_menu_background`.** A
+  transparent normal colour does NOT stop the MenuLayer filling its frame first
+  (PebbleOS `menu_layer.c`, `prv_draw_background`): without the callback the backdrop
+  disappears under a white sheet and only the highlight bar shows.
+- **Backdrops are packed 4-bit raw resources, not PNGs** (`resources/data/bd_*~<plat>.bin`,
+  format in `skin.c`). A 260x260 PNG decodes through a compressed copy plus an inflate
+  buffer on top of the 34KB bitmap, more than the Round 2 has free. The packed form unpacks
+  straight into a `GBitmapFormat4BitPalette` bitmap through a 128-byte read buffer.
+- **One backdrop in memory, owned by a window.** `.appear` calls `skin_show(window, ...)`,
+  `.disappear` calls `skin_hide(window)`; ownership is by window so either order of
+  appear/disappear works and two screens can share a backdrop. `combat_window_push` calls
+  `skin_release()` first, because the fight's window loads BEFORE the floor beneath it
+  disappears -- otherwise combat would load with the floor's 34KB still held.
+- Heap with a backdrop up on gabbro (DD_HEAP): 29-36KB free on every menu.
+  Resource packs: gabbro 201KB, emery 163KB of the 256KB limit.
+- `tools/make_menu_art.py` builds all of it from `art/raw/`: crops emery's 200x228 out of
+  the 260x260 original, dims it (one 2-bit level for the bright stage art, a softer table
+  for the dungeon), snaps to the 64 colours, cuts to 16, packs, and rewrites the BD_* and
+  IC_* entries in package.json. A missing original gets a drawn placeholder.
+- Locked icons are silhouettes by swapping the icon's palette for the draw -- colour
+  Pebbles have no tint compositing mode (only Assign and Set are supported).
+
+### Dicey is the one from the store icon
+
+Nathan prefers the two-eyed Dicey of `store/icon-large-144.png` (big eyes, pink cheeks,
+sword up) and asked for the earlier one-eyed version to go. **Every Dicey is now made from
+that icon**: `tools/cut_dicey.py` cuts him out (flood fill from the edge, so the cheeks
+survive) to `art/dicey/dicey_cut.png` and writes the splash `dicey.png` and the 47x48
+`class_warrior.png`. The 25x25 launcher icon is hand-pixelled in `tools/make_menu_icon.py`,
+because at that size a downscale turns his eyes to mush. The banner
+(`tools/make_banner.py`) puts the cut-out on a PixelLab stage. Do not regenerate him from a
+text prompt.
+
 ## Artwork: generating sprites that the hardware can actually show
 
 Enemy sprites come from PixelLab (MCP). `portraits.c` maps a shape to a resource
@@ -263,9 +317,9 @@ The floor map passes an icon per node kind to `menu_cell_basic_draw` (`s_icons` 
 `floor.c`), and the class-select screen draws a portrait per class. Both are 32px or smaller.
 
 `menu_icon.png` (25x25) is the launcher icon, flagged `"menuIcon": true` — only one resource
-may claim that. It and `class_warrior.png` were **resized**, which interpolates and invents
-colours, so both were re-snapped onto the 64-colour palette afterwards. Any resize needs that
-step and then `tools/verify_art.py` to prove it.
+may claim that. Any resize interpolates and invents colours, so it needs re-snapping onto the
+64-colour palette afterwards and then `tools/verify_art.py` to prove it (`cut_dicey.py` does
+both for Dicey).
 
 **`enemies.c` indices are load-bearing and easy to break.** `BOSS_FIRST` must equal the real
 array index of the first boss, and `s_items`-style `/*nn*/` comments are the only thing
@@ -281,8 +335,8 @@ off-palette colours, partial alpha and oversized images. Its size limit is role-
 
 ### The splash, and why it is short
 
-`splash.c` drops Dicey in on an `ease_out_bounce`, slides the title up under him, and
-leaves after 2.3s. **Any button or any tap skips it immediately.** A splash on a watch
+`splash.c` drops Dicey in on an `ease_out_bounce` onto the title's stage backdrop, slides the
+title up under him, and leaves after 2.3s. **Any button or any tap skips it immediately.** A splash on a watch
 is a tax charged on every single launch, so it must never be the thing standing between
 someone and a game they opened on purpose. Keep it skippable and keep it brief.
 
@@ -292,7 +346,9 @@ someone and a game they opened on purpose. Keep it skippable and keep it brief.
 Those sizes come from the tool's own prompts in `pebble_tool/commands/publish.py`, not
 from documentation. The publisher captures its own screenshots per platform.
 
-Store icons are deliberately **not** palette-restricted — they are shown on the web and
+`store/screenshots/<plat>/` holds `1-preview.gif` (from `tools/record_preview.py`) and seven
+stills, all native size. The banner is `tools/make_banner.py`. Store icons are deliberately
+**not** palette-restricted — they are shown on the web and
 on a phone, never on the watch, so forcing them into 64 colours would throw away quality
 for nothing. This is why `tools/verify_art.py` only looks in `resources/images/`.
 
@@ -328,7 +384,15 @@ a clean `Heap Usage ... Still allocated <0B>` — an ordinary exit, not a crash.
 The consequence is not just a dead handler. Quitting is always available to the player, so a
 fight going badly could be escaped by holding BACK and then resuming from the last save —
 a free retry that makes permadeath meaningless. `g_run.in_fight` is set and saved when a
-battle opens and cleared when it ends; `load_run()` discards a run that was put down in the
+battle opens and cleared when it ends. A run put down in the middle of one is NOT discarded:
+`floor.c`'s appear handler drops you straight back into that fight, at the health it started
+with (b0d4633). Two holes in that were closed in 1.2: a WIN is no longer saved by combat --
+the floor records gold, health and the beaten node in one save when it reappears, so quitting
+during the closing toast just replays the fight instead of keeping the gold and leaving the
+enemy to farm -- and a LOSS is made final on disk the instant the hero drops
+(`run_record_loss()`), so quitting during "You are out of the game" cannot revive the run.
+Whether resuming at full starting health is itself too generous is an open design question.
+The original text read: `load_run()` discards a run that was put down in the
 middle of one. Keep that flag if you touch combat's entry or exit.
 
 ## Difficulty, and how it is tuned
@@ -437,6 +501,13 @@ ps aux | grep -o "monitor tcp::[0-9]*"             # find the port
 
 `DD_BOOT_*` is read at **configure** time, so `pebble clean` is needed to change or clear it.
 
+`DD_BOOT_SCREEN=n` opens one menu screen at launch (1 campaign, 2 class, 3 best runs,
+4 achievements, 5 how to play, 6/7 win/lose, 8/9/10 shop/anvil/trade, 11 backpack, 12 floor;
+`DD_BOOT_ROW` picks the campaign row, or the floor for 8-12) with campaign progress faked in
+memory. `DD_SHOWCASE=1` fakes the same progress but launches normally, splash and all -- it is
+what the store recording runs. `tools/shot.py <platform> <out.png>` screenshots through the
+QEMU monitor with the colour scale fixed.
+
 **`pebble wipe` does not clear the app's saved run.** The persisted state lives in the
 emulator's flash image and survives both `wipe` and a reinstall, so a "fresh" emulator will
 happily show Continue from a run you thought you had thrown away. Delete the image instead —
@@ -535,8 +606,11 @@ turns, asserting a set of invariants after every single event.
 
     tools/hostsim/build.sh && tools/hostsim/fuzz_touch 60000 <seed>
 
-Geometry is real (`grect_contains_point`, `grect_inset`); drawing is inert. It
-fuzzes both displays, since the round layout computes different rects. The
+Geometry is real (`grect_contains_point`, `grect_inset`); drawing is inert. `build.sh`
+makes two binaries: `fuzz_touch` and `fuzz_touch_round`, compiled with `PBL_ROUND`, because
+`ui.c`'s circle maths is chosen at compile time and the first binary never runs it. The
+harness unloads the previous fight before pushing the next, as the SDK would: the push
+functions now refuse a second window while one still exists. The
 current code survives ~850k touch events across eight seeds with no ASan
 finding. That rules out memory corruption in the combat screen -- it does not
 rule out a firmware-level fault, which this cannot see.

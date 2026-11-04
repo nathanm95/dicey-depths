@@ -104,6 +104,7 @@ typedef struct GContext GContext;
 typedef struct GBitmap { int _; } GBitmap;
 typedef struct Layer Layer;
 typedef struct Window Window;
+typedef struct MenuLayer MenuLayer;   // only named by skin.h
 typedef struct AppTimer { int _; } AppTimer;
 
 // The host build is rectangular (emery). host_set_screen swaps in gabbro's

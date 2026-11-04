@@ -75,9 +75,19 @@ int main(int argc, char **argv) {
             // Alternate the two shipping displays: the round one computes a
             // completely different layout, so its hit rects differ too.
             bool round = (rr(2) == 0);
+#ifdef PBL_ROUND
+            // The round build: ui.c's circle maths is compile-time, so only
+            // this binary exercises the Round 2's real layout.
+            round = true;
+#endif
             host_set_round(round);
             W = round ? 260 : 200; H = round ? 260 : 228;
             host_set_screen(W, H);
+            // Close the previous fight the way the SDK would on a pop. Without
+            // this, combat_window_push's guard (a second push while the window
+            // still exists is refused) kept the old fight -- and its class's
+            // button count -- under a new class.
+            if (s_window) { window_disappear(s_window); window_unload(s_window); }
             g_run.active = true;
             g_run.mode = MODE_CAMPAIGN;
             g_run.klass = (uint8_t)rr(CLASS_COUNT);

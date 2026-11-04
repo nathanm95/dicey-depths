@@ -24,7 +24,7 @@ static const char *s_blurbs[RULE_COUNT] = {
     "Start with upgraded weapons - and take a curse at the start of every turn.",
     "Statuses mean different things. Frozen drops every die by 1. Burn is usable, but jams that card. Poison infects a card instead of you.",
     "Lose one piece of equipment after every fight. Travel light.",
-    "Half the health. Double the gold. Good luck.",
+    "Three-quarters the health, an extra die, double the gold. Good luck.",
     "Six card slots from the very first floor - and everything you meet is tougher for it.",
     "Every enemy rolls an extra die. There is no safe turn.",
     "Six slots, tougher enemies, an extra die each. Everything at once."

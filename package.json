@@ -1,7 +1,7 @@
 {
   "name": "dicey-dungeons",
   "author": "Nathan Marchant",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "keywords": [
     "pebble-app"
   ],
@@ -186,6 +186,166 @@
           "name": "IMAGE_MENU_ICON",
           "file": "images/menu_icon.png",
           "menuIcon": true
+        },
+        {
+          "type": "raw",
+          "name": "BD_STAGE_TITLE",
+          "file": "data/bd_stage_title.bin"
+        },
+        {
+          "type": "raw",
+          "name": "BD_STAGE_CLASS",
+          "file": "data/bd_stage_class.bin"
+        },
+        {
+          "type": "raw",
+          "name": "BD_STAGE_HALL",
+          "file": "data/bd_stage_hall.bin"
+        },
+        {
+          "type": "raw",
+          "name": "BD_STAGE_WIN",
+          "file": "data/bd_stage_win.bin"
+        },
+        {
+          "type": "raw",
+          "name": "BD_EP1_OPENING",
+          "file": "data/bd_ep1_opening.bin"
+        },
+        {
+          "type": "raw",
+          "name": "BD_EP2_GREED",
+          "file": "data/bd_ep2_greed.bin"
+        },
+        {
+          "type": "raw",
+          "name": "BD_EP3_PARALLEL",
+          "file": "data/bd_ep3_parallel.bin"
+        },
+        {
+          "type": "raw",
+          "name": "BD_EP4_ELIMINATION",
+          "file": "data/bd_ep4_elimination.bin"
+        },
+        {
+          "type": "raw",
+          "name": "BD_EP5_SUDDEN",
+          "file": "data/bd_ep5_sudden.bin"
+        },
+        {
+          "type": "raw",
+          "name": "BD_BONUS_HOARD",
+          "file": "data/bd_bonus_hoard.bin"
+        },
+        {
+          "type": "raw",
+          "name": "BD_BONUS_SWARM",
+          "file": "data/bd_bonus_swarm.bin"
+        },
+        {
+          "type": "raw",
+          "name": "BD_BONUS_BACKSTAGE",
+          "file": "data/bd_bonus_backstage.bin"
+        },
+        {
+          "type": "raw",
+          "name": "BD_DUN_FLOOR1",
+          "file": "data/bd_dun_floor1.bin"
+        },
+        {
+          "type": "raw",
+          "name": "BD_DUN_FLOOR2",
+          "file": "data/bd_dun_floor2.bin"
+        },
+        {
+          "type": "raw",
+          "name": "BD_DUN_FLOOR3",
+          "file": "data/bd_dun_floor3.bin"
+        },
+        {
+          "type": "raw",
+          "name": "BD_DUN_SHOP",
+          "file": "data/bd_dun_shop.bin"
+        },
+        {
+          "type": "raw",
+          "name": "BD_DUN_ANVIL",
+          "file": "data/bd_dun_anvil.bin"
+        },
+        {
+          "type": "raw",
+          "name": "BD_DUN_TRADE",
+          "file": "data/bd_dun_trade.bin"
+        },
+        {
+          "type": "raw",
+          "name": "BD_DUN_LOSE",
+          "file": "data/bd_dun_lose.bin"
+        },
+        {
+          "type": "bitmap",
+          "name": "IC_KEY",
+          "file": "images/ic_key.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IC_FLAG",
+          "file": "images/ic_flag.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IC_STAIRS",
+          "file": "images/ic_stairs.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IC_TROPHY",
+          "file": "images/ic_trophy.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IC_MEDAL",
+          "file": "images/ic_medal.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IC_BOOK",
+          "file": "images/ic_book.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IC_LOCK",
+          "file": "images/ic_lock.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IC_FEATHER",
+          "file": "images/ic_feather.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IC_SWORD",
+          "file": "images/ic_sword.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IC_SKULL",
+          "file": "images/ic_skull.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IC_COIN",
+          "file": "images/ic_coin.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IC_HEART",
+          "file": "images/ic_heart.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "IC_BACKPACK",
+          "file": "images/ic_backpack.png"
         }
       ]
     }

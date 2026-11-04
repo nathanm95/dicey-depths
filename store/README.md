@@ -32,5 +32,10 @@ not be upscaled:
 | Screenshots, Round 2 | 260x260 | `screenshots/gabbro/` |
 | Banner (optional, either platform) | 720x320 | `banner-720x320.png` |
 
-Five per platform: splash, title, class select, floor map, combat. The splash captures were
-brightened — the emulator renders unlit at about 39%, which is not how the watch looks.
+Per platform (1.2): `1-preview.gif`, then splash, title, campaign, class select, floor map,
+combat and the WINNER screen. The GIF is `tools/record_preview.py` driving a `DD_SHOWCASE`
+build through the menus into a fight; the stills are frames taken from those recordings (and
+the WINNER from a `DD_BOOT_SCREEN=6` build), so they are the watch's own pixels.
+
+The banner is composed by `tools/make_banner.py`: a PixelLab stage (`art/raw/banner_stage.png`)
+and Dicey cut from the store icon, both doubled with nearest-neighbour, with real type on top.

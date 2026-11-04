@@ -172,6 +172,21 @@ void cond_label_short(Cond c, char *out, size_t len) {
 }
 
 // --- Upgrades --------------------------------------------------------------
+// Whether the anvil can do anything for this card at all. A widened window
+// always helps; otherwise the +1 goes on the die's value, which only matters to
+// an effect that scales with it. Reroll, Rage and the pure status cards do not,
+// and the anvil used to take its one use for "reroll -> reroll".
+bool item_upgrade_useful(uint8_t id) {
+    if (item_upgrade_widens(id)) return true;
+    const ItemDef *d = item_def(id);
+    for (int e = 0; e < 2; e++) {
+        uint8_t k = d->eff[e].kind;
+        if ((k == EFF_DAMAGE || k == EFF_SHIELD || k == EFF_HEAL || k == EFF_DRAIN) && d->eff[e].mult != 0)
+            return true;
+    }
+    return false;
+}
+
 bool item_upgrade_widens(uint8_t id) {
     uint8_t k = item_def(id)->cond[0].kind;
     return (k == COND_MAX || k == COND_MIN);

@@ -49,6 +49,13 @@ const EnemyDef *enemy_def(uint8_t id) {
 }
 
 uint8_t enemy_boss_for_level(uint8_t campaign_level) {
+    // The Bonus Rounds have no boss of their own: each borrows the one whose
+    // theme it shares, rather than all three falling off the end of the table
+    // onto The Drake. Hoard: The Banker. Swarm: The Rat King. Backstage: The Host.
+    static const uint8_t bonus[RULE_COUNT - RULE_CAMPAIGN_COUNT] = { 1, 0, 3 };
+    if (campaign_level >= RULE_CAMPAIGN_COUNT && campaign_level < RULE_COUNT) {
+        campaign_level = bonus[campaign_level - RULE_CAMPAIGN_COUNT];
+    }
     uint8_t id = (uint8_t)(BOSS_FIRST + campaign_level);
     return (id >= ENEMY_TOTAL) ? (uint8_t)(ENEMY_TOTAL - 1) : id;
 }

@@ -1,6 +1,7 @@
 #include "game.h"
 #include "ui.h"
 #include "anim.h"
+#include "skin.h"
 
 // ---------------------------------------------------------------------------
 // The splash.
@@ -18,6 +19,7 @@
 
 static Window   *s_window;
 static Layer    *s_layer;
+static Layer    *s_bg;
 static GBitmap  *s_dicey;
 static AppTimer *s_frame;
 static AppTimer *s_auto;
@@ -42,8 +44,7 @@ static void update(Layer *layer, GContext *ctx) {
     GRect b = layer_get_bounds(layer);
     uint32_t t = anim_now();
 
-    graphics_context_set_fill_color(ctx, COL_CARD);
-    graphics_fill_rect(ctx, b, 0, GCornerNone);
+    // Nothing to fill: the title stage is painted behind this layer.
 
     // Dicey falls in and bounces to rest.
     int32_t p = (t >= SPLASH_DROP_MS) ? 1000 : (int32_t)((t * 1000) / SPLASH_DROP_MS);
@@ -69,7 +70,7 @@ static void update(Layer *layer, GContext *ctx) {
     if (tp > 0) {
         int16_t ty = (int16_t)lerp(b.size.h, rest_y + ds.h + 2, ease_out_quad(tp));
         GRect band = ui_band(&b, ty, 30, 6);
-        ui_draw_text_c(ctx, "DICEY DEPTHS", ui_font_title(), band, COL_INK, GTextAlignmentCenter);
+        skin_text(ctx, "DICEY DEPTHS", ui_font_title(), band, GColorYellow, GTextAlignmentCenter);
     }
 }
 
@@ -82,13 +83,19 @@ static void click_config(void *ctx) {
     window_single_click_subscribe(BUTTON_ID_BACK, click_skip);
 }
 
+// Closing removes the window, whose .disappear unsubscribes from the touch
+// service -- which must not happen from inside the touch service's own
+// callback. So a tap closes on the next tick instead.
+static void touch_close(void *ctx) { splash_close(); }
+
 static void touch_handler(const TouchEvent *e, void *ctx) {
     if (e->non_navigational) return;    // the contact that woke the watch
-    if (e->type == TouchEvent_Liftoff) splash_close();
+    if (e->type == TouchEvent_Liftoff && !s_leaving) app_timer_register(0, touch_close, NULL);
 }
 
 static void window_load(Window *window) {
     Layer *root = window_get_root_layer(window);
+    s_bg = skin_backdrop_layer(root);
     s_layer = layer_create(layer_get_bounds(root));
     layer_set_update_proc(s_layer, update);
     layer_add_child(root, s_layer);
@@ -96,6 +103,9 @@ static void window_load(Window *window) {
 }
 
 static void window_appear(Window *window) {
+    // Dicey lands on the same stage the title shows next, so the hand-off from
+    // splash to menu is the stage staying put and the menu arriving on it.
+    skin_show(window, RESOURCE_ID_BD_STAGE_TITLE, SKIN_STAGE);
     anim_reset();
     // No bridge call here either -- see combat.c's window_appear.
     if (touch_service_is_enabled()) touch_service_subscribe(touch_handler, NULL);
@@ -104,6 +114,7 @@ static void window_appear(Window *window) {
 }
 
 static void window_disappear(Window *window) {
+    skin_hide(window);
     touch_service_unsubscribe();
     if (s_frame) { app_timer_cancel(s_frame); s_frame = NULL; }
     if (s_auto)  { app_timer_cancel(s_auto);  s_auto = NULL; }
@@ -113,14 +124,20 @@ static void window_unload(Window *window) {
     if (s_dicey) { gbitmap_destroy(s_dicey); s_dicey = NULL; }
     layer_destroy(s_layer);
     s_layer = NULL;
+    skin_backdrop_layer_destroy(s_bg);
+    s_bg = NULL;
     window_destroy(s_window);
     s_window = NULL;
 }
 
 void splash_window_push(void) {
+    // Each screen keeps its window and layers in file statics. An animated pop
+    // unloads only when the slide ends, so a second push landing in that gap
+    // would have the old unload destroy the new window. Refuse it instead.
+    if (s_window) return;
     s_leaving = false;
     s_window = window_create();
-    window_set_background_color(s_window, COL_CARD);
+    window_set_background_color(s_window, GColorBlack);
     window_set_click_config_provider(s_window, click_config);
     window_set_window_handlers(s_window, (WindowHandlers) {
         .load = window_load, .appear = window_appear,

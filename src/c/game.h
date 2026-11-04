@@ -104,6 +104,7 @@ void item_effect_label_up(uint8_t id, bool upgraded, char *out, size_t len);
 uint8_t item_roll_for_floor(uint8_t depth);
 bool item_is_two_slot(uint8_t id);
 bool item_is_reroll(uint8_t id);
+bool item_upgrade_useful(uint8_t id);
 
 // --- Enemy portraits -------------------------------------------------------
 // Drawn procedurally from flat shapes — bright, bold and cheap, with no art
@@ -250,6 +251,10 @@ typedef struct {
     uint8_t  node_count;
     uint8_t  foes_cleared;
     uint8_t  foes_required;
+    // pack_up is eight bits for a ten-slot pack; slots 8 and 9 live here. It
+    // sits in what used to be the struct's trailing padding byte, so the save
+    // is still 64 bytes and an older save loads unchanged.
+    uint8_t  pack_up_hi;
 } RunState;
 
 extern RunState g_run;
@@ -304,6 +309,9 @@ int  progress_submit_score(void);       // returns the rank, or -1
 
 // --- Windows ---------------------------------------------------------------
 void floor_window_push(void);
+void run_clear_upgraded(bool equipped, int index);
+void run_record_loss(void);           // makes a lost fight final on disk, at once
+uint32_t floor_backdrop(void);    // the dungeon set for the floor in play
 void combat_window_push(uint8_t enemy_id, bool elite);
 void backpack_window_push(void);
 void shop_window_push(uint8_t node_index);
@@ -311,7 +319,8 @@ void trade_window_push(uint8_t node_index);
 void anvil_window_push(uint8_t node_index);
 void scores_window_push(void);
 void howto_window_push(void);
-void gameover_window_push(bool won);
+// `floor` is the floor the run ended on; it is only shown for a loss.
+void gameover_window_push(bool won, uint8_t floor, bool endless);
 void splash_window_push(void);
 
 typedef enum { BATTLE_NONE = 0, BATTLE_WON, BATTLE_LOST } BattleResult;

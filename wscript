@@ -41,6 +41,18 @@ def configure(ctx):
         for env in ctx.all_envs.values():
             env.append_value('DEFINES', ['DD_TOUCHDBG=1'])
 
+    # DD_BOOT_SCREEN=n opens one menu screen at launch (see the end of main()).
+    # DD_BOOT_ROW picks the highlighted campaign row, or the floor for 8-12.
+    if os.environ.get('DD_BOOT_SCREEN'):
+        for env in ctx.all_envs.values():
+            env.append_value('DEFINES', ['DD_BOOT_SCREEN=' + os.environ['DD_BOOT_SCREEN'],
+                                         'DD_BOOT_ROW=' + os.environ.get('DD_BOOT_ROW', '0')])
+
+    # DD_SHOWCASE fakes a part-cleared campaign in memory, for store captures.
+    if os.environ.get('DD_SHOWCASE'):
+        for env in ctx.all_envs.values():
+            env.append_value('DEFINES', ['DD_SHOWCASE=1'])
+
     if os.environ.get('DD_HEAP'):
         for env in ctx.all_envs.values():
             env.append_value('DEFINES', ['DD_HEAP=1'])

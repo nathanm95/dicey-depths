@@ -55,6 +55,14 @@ follows the curve of the round display. No phone required — everything runs on
 
 Inspired by Dicey Dungeons by Terry Cavanagh.
 
+## Release notes -- 1.2.0
+Painted menus: every screen now sits on its own game-show stage or dungeon set, with icons,
+and the episode list shows the boss waiting at the end of each one. Dicey has his
+two-eyed look from the app icon everywhere. The Bonus Rounds can now actually be started.
+Enemy Blind and Silence now work, a poisoned enemy no longer gets a last attack after
+dying, Gambit's shield fires, shops no longer restock after you buy, and several statuses
+can no longer land on an empty slot. Plenty of smaller fixes.
+
 ## Source URL
 https://github.com/nathanm95/dicey-depths
 (currently a private repo — make it public or leave this field blank)
