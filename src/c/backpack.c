@@ -39,7 +39,7 @@ static uint16_t get_num_rows(MenuLayer *m, uint16_t s, void *c) {
 static int16_t get_header_height(MenuLayer *m, uint16_t s, void *c) { return 20; }
 
 static void draw_header(GContext *ctx, const Layer *cell, uint16_t section, void *data) {
-    skin_header(ctx, cell, section == 0 ? "In the grid (tap to remove)" : "Spare (tap to equip)", NULL);
+    skin_header(ctx, cell, section == 0 ? "In the grid (tap to remove)" : "Spare (hold to throw away)", NULL);
 }
 
 static void item_row(uint8_t id, bool upgraded, char *t, size_t tl, char *s, size_t sl) {
@@ -111,6 +111,21 @@ static void select_row(MenuLayer *m, MenuIndex *idx, void *c) {
     menu_layer_reload_data(s_menu);
 }
 
+// Hold SELECT on a spare card to throw it away. A full kit and a full pack used
+// to lock out every chest and elite drop for the rest of the run, with no way
+// to make room. Only spares can go: a card has to leave the grid first, so one
+// long press can never strip a slot you are fighting with.
+static void select_long(MenuLayer *m, MenuIndex *idx, void *c) {
+    if (idx->section != 1) { vibes_short_pulse(); return; }
+    int pi = pack_index_for_row(idx->row);
+    if (pi < 0) return;
+    g_run.pack[pi] = ITEM_NONE;
+    run_clear_upgraded(false, pi);
+    save_run();
+    vibes_double_pulse();
+    menu_layer_reload_data(s_menu);
+}
+
 static void window_appear(Window *window)    { skin_show(window, floor_backdrop(), SKIN_DUNGEON); }
 static void window_disappear(Window *window) { skin_hide(window); }
 
@@ -123,6 +138,7 @@ static void window_load(Window *window) {
         .get_num_rows = get_num_rows,
         .draw_row = draw_row,
         .select_click = select_row,
+        .select_long_click = select_long,
         .get_header_height = get_header_height,
         .draw_header = draw_header,
         .draw_background = skin_menu_background

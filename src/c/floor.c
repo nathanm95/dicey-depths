@@ -157,24 +157,37 @@ static uint16_t get_num_rows(MenuLayer *m, uint16_t s, void *c) {
     return (uint16_t)(g_run.node_count + 1);   // nodes, then the backpack
 }
 
+// Endless draws a ruleset per floor from floor 4, and on Hard a curse too, so
+// its header gets a line of its own to name them. In the campaign the ruleset
+// is the episode you picked, and the curse (on Hard) takes its place instead.
+static bool endless_rules_line(char *out, size_t len) {
+    if (g_run.mode != MODE_ENDLESS) return false;
+    bool rule = g_run.rule != RULE_PLAIN, curse = g_run.curse != CURSE_NONE;
+    if (rule && curse) snprintf(out, len, "%s + %s", rule_tag((RuleId)g_run.rule), curse_name(g_run.curse));
+    else if (rule)     snprintf(out, len, "%s", rule_name((RuleId)g_run.rule));
+    else if (curse)    snprintf(out, len, "%s", curse_name(g_run.curse));
+    else return false;
+    return true;
+}
+
 static int16_t get_header_height(MenuLayer *m, uint16_t s, void *c) {
-    return 36;
+    char tmp[40];
+    return endless_rules_line(tmp, sizeof(tmp)) ? 52 : 36;
 }
 
 static void draw_header(GContext *ctx, const Layer *cell, uint16_t section, void *data) {
-    GRect r = ui_cell_inset(layer_get_bounds(cell));
-    char a[40], b[40];
+    char a[40], mid[40], b[40];
+    snprintf(b, sizeof(b), "HP %d/%d  %dg  Lv%d", g_run.hp, g_run.max_hp, g_run.gold, g_run.level);
+    if (g_run.mode == MODE_ENDLESS) {
+        snprintf(a, sizeof(a), "Endless - Floor %d", g_run.floor);
+        if (endless_rules_line(mid, sizeof(mid))) skin_header3(ctx, cell, a, mid, b);
+        else skin_header(ctx, cell, a, b);
+        return;
+    }
     // On Hard the floor's curse takes the ruleset's place on the first line --
     // never the floor number, which is the thing you most need to know.
     const char *what = (g_run.curse != CURSE_NONE) ? curse_name(g_run.curse) : rule_name((RuleId)g_run.rule);
-    if (g_run.mode == MODE_ENDLESS) {
-        if (g_run.curse != CURSE_NONE) snprintf(a, sizeof(a), "Endless %d - %s", g_run.floor, what);
-        else snprintf(a, sizeof(a), "Endless - Floor %d", g_run.floor);
-    } else {
-        snprintf(a, sizeof(a), "Floor %d/%d - %s", g_run.floor, FLOOR_COUNT, what);
-    }
-    snprintf(b, sizeof(b), "HP %d/%d  %dg  Lv%d", g_run.hp, g_run.max_hp, g_run.gold, g_run.level);
-    (void)r;
+    snprintf(a, sizeof(a), "Floor %d/%d - %s", g_run.floor, FLOOR_COUNT, what);
     skin_header(ctx, cell, a, b);
 }
 
@@ -233,7 +246,10 @@ static void select_row(MenuLayer *m, MenuIndex *idx, void *c) {
                 menu_layer_reload_data(s_menu);
                 backpack_window_push();
             } else {
+                // Everything is full: open the pack, where a spare can be
+                // thrown away to make room, rather than just buzzing.
                 vibes_short_pulse();
+                backpack_window_push();
             }
             break;
         case NODE_SHOP:  shop_window_push((uint8_t)idx->row);  break;
@@ -256,23 +272,6 @@ static void select_row(MenuLayer *m, MenuIndex *idx, void *c) {
             break;
         default: break;
     }
-}
-
-// Losing a piece of equipment after every fight is the Elimination Round's
-// whole rule, and it is why a lean loadout matters there.
-static void elimination_toll(void) {
-    int owned[MAX_EQUIP], n = 0;
-    for (int i = 0; i < MAX_EQUIP; i++) if (g_run.equip[i] != ITEM_NONE) owned[n++] = i;
-    // Losing a card after every fight is the rule; being stripped bare by floor
-    // two is a death spiral. How far it can strip you scales with difficulty,
-    // which is the only way this rule can be made gentle on Easy — no health
-    // multiplier can give a card back.
-    static const int floor_by_diff[DIFF_COUNT] = { 4, 5, 3 };
-    uint8_t d = (g_run.difficulty < DIFF_COUNT) ? g_run.difficulty : DIFF_NORMAL;
-    if (n <= floor_by_diff[d]) return;
-    int pick = owned[rand() % n];
-    g_run.equip[pick] = ITEM_NONE;
-    run_clear_upgraded(true, pick);
 }
 
 static void window_disappear(Window *window) { skin_hide(window); }
@@ -300,12 +299,18 @@ static void window_appear(Window *window) {
 
         g_run.in_fight = false;
         bool was_boss = enemy_def(n->arg)->boss;
-        // An elite is worth fighting because it always leaves something rare.
-        if (n->kind == NODE_ELITE) {
-            uint8_t drop = item_roll_for_floor((uint8_t)(g_run.floor + 2));
-            if (run_backpack_add(drop)) vibes_short_pulse();
+        // Combat decided both of these at the win and named them in its
+        // closing toast (see g_spoils); this is where they land, in the same
+        // save as the rest of the win. The toll goes first, so the rare card
+        // just won is never the one it takes.
+        if (g_run.rule == RULE_ELIMINATION && g_spoils.toll >= 0 && g_spoils.toll < MAX_EQUIP) {
+            g_run.equip[g_spoils.toll] = ITEM_NONE;
+            run_clear_upgraded(true, g_spoils.toll);
         }
-        if (g_run.rule == RULE_ELIMINATION) elimination_toll();
+        // An elite is worth fighting because it always leaves something rare.
+        if (n->kind == NODE_ELITE && g_spoils.drop != ITEM_NONE) run_backpack_add(g_spoils.drop);
+        g_spoils.drop = ITEM_NONE;
+        g_spoils.toll = -1;
         save_run();
 
         if (was_boss && g_run.mode == MODE_CAMPAIGN) {

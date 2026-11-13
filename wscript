@@ -28,6 +28,12 @@ def configure(ctx):
             env.append_value('DEFINES', ['DD_BOOT_FLOOR=' + os.environ['DD_BOOT_FLOOR'],
                                          'DD_BOOT_CLASS=' + os.environ.get('DD_BOOT_CLASS', '0'),
                                          'DD_BOOT_MODE=' + os.environ.get('DD_BOOT_MODE', '0')])
+            # DD_FLOOR_RULE / DD_FLOOR_DIFF put a ruleset and a difficulty on that
+            # floor, so the Endless header's rules line can be captured.
+            if os.environ.get('DD_FLOOR_RULE'):
+                env.append_value('DEFINES', ['DD_FLOOR_RULE=' + os.environ['DD_FLOOR_RULE']])
+            if os.environ.get('DD_FLOOR_DIFF'):
+                env.append_value('DEFINES', ['DD_FLOOR_DIFF=' + os.environ['DD_FLOOR_DIFF']])
 
     # DD_ONESHOT gives one side 1 HP so a crash test reaches an end-of-fight
     # screen in one turn rather than sixteen rounds of blind button presses.

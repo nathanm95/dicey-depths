@@ -30,8 +30,25 @@ static const char *s_blurbs[RULE_COUNT] = {
     "Six slots, tougher enemies, an extra die each. Everything at once."
 };
 
+// Endless only ever draws the campaign five, and only from floor 4; these are
+// what the floor header and the fight's opening toast say about the one in
+// force. A fight's toast holds 63 characters, name included.
+static const char *s_tags[RULE_COUNT] = {
+    "", "Greed", "Parallel", "Elimination", "Sudden Death", "Hoard", "Swarm", "Backstage"
+};
+static const char *s_floor_blurbs[RULE_COUNT] = {
+    "",
+    "every card improved, a curse every turn",
+    "statuses mean different things",
+    "lose a card after every fight",
+    "3/4 health, an extra die, double gold",
+    "", "", ""
+};
+
 const char *rule_name(RuleId r)  { return (r < RULE_COUNT) ? s_names[r]  : "?"; }
 const char *rule_blurb(RuleId r) { return (r < RULE_COUNT) ? s_blurbs[r] : ""; }
+const char *rule_tag(RuleId r)   { return (r < RULE_COUNT) ? s_tags[r]   : ""; }
+const char *rule_floor_blurb(RuleId r) { return (r < RULE_COUNT) ? s_floor_blurbs[r] : ""; }
 
 bool rule_is_bonus(uint8_t r) { return r >= RULE_CAMPAIGN_COUNT && r < RULE_COUNT; }
 

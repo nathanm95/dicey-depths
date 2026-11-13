@@ -8,7 +8,10 @@ cd "$(dirname "$0")/.."
 SP=${SP:-/tmp}
 CLS=${1:-0}; MODE=${2:-1}; TAG=${3:-run}; PLAT=${4:-emery}; GMODE=${5:-0}
 pebble kill >/dev/null 2>&1
-F=~/Library/Application\ Support/Pebble\ SDK/4.33.1/$PLAT/qemu_spi_flash.bin
+# The flash image lives under the ACTIVE SDK's folder; moving another SDK's copy
+# does nothing and looks exactly like the move silently failing.
+SDK=$(pebble sdk list 2>/dev/null | awk '/\(active\)/ {print $1; exit}')
+F=~/Library/Application\ Support/Pebble\ SDK/${SDK:-4.44}/$PLAT/qemu_spi_flash.bin
 [ -f "$F" ] && mv "$F" "$SP/flash-$PLAT-$TAG.bin"   # moved, not deleted: a fresh save
 export DD_BOOT_FLOOR=3 DD_BOOT_CLASS=$CLS DD_ONESHOT=$MODE DD_BOOT_MODE=$GMODE
 pebble clean >/dev/null 2>&1

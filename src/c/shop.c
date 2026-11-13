@@ -249,7 +249,9 @@ static uint8_t    s_offer[MAX_EQUIP];
 static void build_offers(void) {
     unsigned saved = (unsigned)rand();
     for (uint8_t i = 0; i < MAX_EQUIP; i++) {
-        srand(stock_hash(g_run.floor, (uint32_t)(s_node + 77), (uint32_t)i));
+        // Salted with the floor's enemies like the shop's shelves, or every
+        // run's floor-2 trading post offered the same swaps.
+        srand(stock_hash(g_run.floor ^ run_salt(), (uint32_t)(s_node + 77), (uint32_t)i));
         uint8_t cand = item_roll_for_floor(g_run.floor);
         for (int tries = 0; tries < 16 && already_owned(cand); tries++) {
             cand = item_roll_for_floor(g_run.floor);

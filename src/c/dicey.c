@@ -323,7 +323,7 @@ static const char HOWTO_TEXT[] =
 "FRZ Frozen - your best die becomes a 1\n"
 "SHK Shocked - a card is offline, drop any die on it\n"
 "WKN Weakened - one card does half\n"
-"BLD Blind - dice hidden until spent\n"
+"BLD Blind - dice hidden until spent. A blind enemy plays its dice at random\n"
 "PSN Poison - 3 HP a turn, through shields\n"
 "FRY Fury - your next card fires twice\n"
 "SIL Silence - no Limit Break\n\n"
@@ -332,7 +332,11 @@ static const char HOWTO_TEXT[] =
 "it, or just keep moving the cursor and it follows.\n\n"
 "THE FLOOR\n"
 "Beat two of the three enemies to open the door. The third is optional - its "
-"gold against your health.\n\n"
+"gold against your health.\n"
+"In the backpack, hold Select on a spare card to throw it away.\n\n"
+"ENDLESS\n"
+"No boss - just go as deep as you can. From floor 4 each floor takes one "
+"episode's rule, named at the top of the floor.\n\n"
 "Inspired by Dicey Dungeons by Terry Cavanagh.";
 
 // The one menu screen with no painted backdrop: it is a page of small text,
@@ -436,7 +440,85 @@ static void class_start(void *ctx) {
     floor_window_push();
 }
 
+// --- abandon a run? ---------------------------------------------------------
+// There is one save slot, so starting a run ends the one in progress. That
+// used to happen without a word the moment a class was picked -- and an
+// Endless run thrown away that way never reached the best-runs table.
+static Window    *s_ab_win;
+static MenuLayer *s_ab_menu;
+static Layer     *s_ab_bg;
+static uint8_t    s_ab_class;
+
+static uint16_t ab_rows(MenuLayer *m, uint16_t s, void *c) { return 2; }
+static int16_t  ab_hh(MenuLayer *m, uint16_t s, void *c)   { return 36; }
+
+static void ab_header(GContext *ctx, const Layer *cell, uint16_t section, void *data) {
+    char b[40];
+    if (g_run.mode == MODE_ENDLESS) snprintf(b, sizeof(b), "Endless, floor %d", g_run.floor);
+    else snprintf(b, sizeof(b), "%s, floor %d", rule_name((RuleId)g_run.rule), g_run.floor);
+    skin_header(ctx, cell, "You have a run going", b);
+}
+
+static void ab_draw(GContext *ctx, const Layer *cell, MenuIndex *idx, void *data) {
+    if (idx->row == 0) skin_cell(ctx, cell, "Keep it", "Back to the list", NULL, 0);
+    else skin_cell(ctx, cell, "Start over",
+                   g_run.mode == MODE_ENDLESS ? "Its floors go on the scores" : "That run is lost",
+                   NULL, 0);
+}
+
+static void ab_start(void *ctx) {
+    if (s_ab_win) window_stack_remove(s_ab_win, false);
+    class_start(NULL);
+}
+
+static void ab_select(MenuLayer *m, MenuIndex *idx, void *c) {
+    if (idx->row == 0) { window_stack_remove(s_ab_win, true); return; }
+    // An Endless run ends the way a death would end it: on the scores.
+    if (g_run.active && g_run.mode == MODE_ENDLESS) progress_submit_score();
+    run_new((GameMode)s_pending_mode, s_pending_level, s_ab_class);
+    app_timer_register(0, ab_start, NULL);
+}
+
+static void ab_appear(Window *window)    { skin_show(window, RESOURCE_ID_BD_STAGE_CLASS, SKIN_STAGE); }
+static void ab_disappear(Window *window) { skin_hide(window); }
+
+static void ab_load(Window *window) {
+    Layer *root = window_get_root_layer(window);
+    s_ab_bg = skin_backdrop_layer(root);
+    s_ab_menu = menu_layer_create(layer_get_bounds(root));
+    menu_layer_set_callbacks(s_ab_menu, NULL, (MenuLayerCallbacks) {
+        .get_num_rows = ab_rows, .draw_row = ab_draw, .select_click = ab_select,
+        .get_header_height = ab_hh, .draw_header = ab_header,
+        .draw_background = skin_menu_background
+    });
+    skin_menu(s_ab_menu);
+    menu_layer_set_click_config_onto_window(s_ab_menu, window);
+    layer_add_child(root, menu_layer_get_layer(s_ab_menu));
+}
+
+static void ab_unload(Window *window) {
+    menu_layer_destroy(s_ab_menu);
+    s_ab_menu = NULL;
+    skin_backdrop_layer_destroy(s_ab_bg);
+    s_ab_bg = NULL;
+    window_destroy(s_ab_win);
+    s_ab_win = NULL;
+}
+
+static void abandon_window_push(uint8_t klass) {
+    if (s_ab_win) return;
+    s_ab_class = klass;
+    s_ab_win = window_create();
+    window_set_background_color(s_ab_win, GColorBlack);
+    window_set_window_handlers(s_ab_win, (WindowHandlers) {
+        .load = ab_load, .appear = ab_appear, .disappear = ab_disappear,
+        .unload = ab_unload
+    });
+    window_stack_push(s_ab_win, true);
+}
+
 static void class_select(MenuLayer *m, MenuIndex *idx, void *c) {
+    if (g_run.active) { abandon_window_push((uint8_t)idx->row); return; }
     run_new((GameMode)s_pending_mode, s_pending_level, (uint8_t)idx->row);
     app_timer_register(0, class_start, NULL);
 }
@@ -801,6 +883,12 @@ int main(void) {
     run_new((GameMode)DD_BOOT_MODE, 0, DD_BOOT_CLASS);
     g_run.floor = DD_BOOT_FLOOR;
     g_run.level = DD_BOOT_FLOOR;
+#ifdef DD_FLOOR_RULE
+    g_run.rule = DD_FLOOR_RULE;         // an Endless floor's ruleset, for the header
+#endif
+#ifdef DD_FLOOR_DIFF
+    g_run.difficulty = DD_FLOOR_DIFF;   // 2 = Hard, so run_build_floor draws a curse
+#endif
     g_run.max_hp = (int16_t)(g_run.max_hp + 30);
     g_run.hp = g_run.max_hp;
     {   // a kit that can actually finish a boss, so the WIN path is reachable

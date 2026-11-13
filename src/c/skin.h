@@ -52,6 +52,8 @@ void skin_cell(GContext *ctx, const Layer *cell, const char *title, const char *
 void skin_cell_bg(GContext *ctx, const Layer *cell);
 // One or two centred lines for a section header.
 void skin_header(GContext *ctx, const Layer *cell, const char *a, const char *b);
+// Three lines: a title, a line of what is in force (amber), then b. 52px tall.
+void skin_header3(GContext *ctx, const Layer *cell, const char *a, const char *mid, const char *b);
 
 void skin_text(GContext *ctx, const char *s, GFont font, GRect r, GColor col, GTextAlignment al);
 void skin_icon(GContext *ctx, GBitmap *icon, GPoint at, bool silhouette);

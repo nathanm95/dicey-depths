@@ -6,3 +6,7 @@ node_modules/
 __pycache__/
 tools/hostsim/fuzz_touch_round
 tools/hostsim/fuzz_touch_round.dSYM/
+tools/hostsim/rules_test
+tools/hostsim/rules_test.dSYM/
+tools/hostsim/rules_test_round
+tools/hostsim/rules_test_round.dSYM/

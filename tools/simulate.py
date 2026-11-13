@@ -132,7 +132,9 @@ def fire(card, value, me, foe, d, inc_pct):
     it = ITEMS[card["id"]]
     raw = value
     if card["up"] and not widens(card["id"]): value += 1
-    if card["weak"]: value = max(1, value//2); card["weak"]=False
+    # Weaken halves what the card DOES (1.2.1), not the die: flat cards used to
+    # shrug it off. Self-harm is not halved. Mirrors combat.c apply_effects.
+    weak = card["weak"]; card["weak"]=False
     times = 2 if me.st[ST["ST_FURY"]]>0 else 1
     if times==2: me.st[ST["ST_FURY"]]-=1
     for _ in range(times):
@@ -140,6 +142,8 @@ def fire(card, value, me, foe, d, inc_pct):
             if k==0: continue
             if n==1 and not accepts(it["bonus"], raw): continue
             v = value*mult+add
+            if weak and v>0 and k not in (EFF["EFF_INFLICT"], EFF["EFF_SELF"]):
+                v = max(1, v//2)
             if k==EFF["EFF_DAMAGE"]: hit(foe, v, False, inc_pct)
             elif k==EFF["EFF_SHIELD"]: me.shield += v
             elif k==EFF["EFF_HEAL"]:
@@ -216,6 +220,23 @@ def take_turn(me, foe, robot, inc_pct, rule=0):
         me.st[random.randrange(0, ST["ST_FURY"])] += 1
     if me.is_hero and me.limit and not robot:
         me.st[ST["ST_FURY"]]+=1; me.limit=False; me.charge=0
+
+    # A blind enemy throws each die at a card it could use without seeing the
+    # number; a miss wastes the die and the card (1.2.1, combat.c
+    # plan_blind_turn). Blind wears off as that turn ends.
+    if not me.is_hero and me.st[ST["ST_BLIND"]]>0:
+        me.st[ST["ST_BLIND"]]-=1
+        free=[c for c in me.cards if not c["spent"] and not c["disabled"]
+              and ITEMS[c["id"]]["slots"]==1
+              and not (ITEMS[c["id"]]["uses"] and c["uses"]<=0)]
+        order=list(range(len(dice))); random.shuffle(order)
+        for di in order:
+            if not free: break
+            c=random.choice(free); free.remove(c)
+            if accepts(ITEMS[c["id"]]["cond"][0], dice[di]):
+                fire(c, dice[di], me, foe, dice, inc_pct)
+                if foe.hp<=0: return
+        return
 
     used=[False]*len(dice)
     while True:

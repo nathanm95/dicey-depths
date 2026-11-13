@@ -261,3 +261,15 @@ void skin_header(GContext *ctx, const Layer *cell, const char *a, const char *b)
                   GColorWhite, GTextAlignmentCenter);
     }
 }
+
+void skin_header3(GContext *ctx, const Layer *cell, const char *a, const char *mid, const char *b) {
+    GRect r = ui_cell_inset(layer_get_bounds(cell));
+    skin_text(ctx, a, ui_font_small(), GRect(r.origin.x + 2, r.origin.y, r.size.w - 4, 18),
+              GColorYellow, GTextAlignmentCenter);
+    skin_text(ctx, mid, ui_font_small(), GRect(r.origin.x + 2, (int16_t)(r.origin.y + 16), r.size.w - 4, 18),
+              GColorChromeYellow, GTextAlignmentCenter);
+    if (b && b[0]) {
+        skin_text(ctx, b, ui_font_tiny(), GRect(r.origin.x + 2, (int16_t)(r.origin.y + 32), r.size.w - 4, 18),
+                  GColorWhite, GTextAlignmentCenter);
+    }
+}

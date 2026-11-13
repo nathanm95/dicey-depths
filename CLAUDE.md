@@ -10,7 +10,10 @@ One class so far: the Warrior.
 ## Toolchain
 
 - `pebble-tool` via `uv tool install pebble-tool --python 3.12` (3.13 fails building `stpyv8`)
-- Pebble SDK 4.33.1, `pebble` binary on PATH via `~/.zshenv`
+- Pebble SDK 4.44 (1.2.1 onward; 1.2.0 was built on 4.33.1), `pebble` binary on PATH via `~/.zshenv`.
+  Emulator flash images therefore live under `.../Pebble SDK/4.44/<platform>/`, not 4.33.1;
+  `tools/smoke.sh` reads the active SDK. Note that smoke.sh runs `pebble kill`, which kills
+  every session's emulators: check `ps` for other qemu instances before using it.
 - `pebble build` / `pebble install --emulator <platform>`
 
 ## Targets: emery and gabbro ONLY — this is deliberate
@@ -471,6 +474,48 @@ Still open: the Robot out-performs the Warrior everywhere (69% against 59% on No
 episode, and much wider on Hard). Its built numbers average 4.65 against a die's 3.50, and
 the Reroll card does not fully close that.
 
+## What 1.2.1 fixed, and the rules it pinned down
+
+A read-through review found these; each has a check in `tools/hostsim/rules_test.c`.
+
+- **Endless rulesets apply per floor, in full.** They used to apply only what was
+  charged at `run_new`, which Endless never reaches with a rule in force. Now an Endless
+  Sudden Death floor sets max HP to three-quarters of the level's full figure (worked out
+  from the level in `run_descend`, so it does not compound and older saves agree), and an
+  Endless Greed floor fights with every improvable card improved (`combat_window_push`).
+  The floor header gains a line naming the rule (and Hard's curse), and the fight
+  announces it before the roll's own news.
+- **Blind works on enemies.** A blind enemy throws each die at a card without seeing the
+  number (`plan_blind_turn`); a miss wastes the die and the card. Before, nothing read
+  Blind on an enemy, so Pocket Sand's second effect did nothing.
+- **Weaken halves what the card does, not the die.** Flat cards (Stiletto, Pin, a six's
+  bonus) used to ignore it. Self-harm is never halved.
+- **Spoils are decided in combat and named in its closing toast** (`g_spoils`): the
+  elite's rare card (or "Pack full - X left behind") and the Elimination Round's toll.
+  The floor applies both in its one save. The toll now comes before the drop, so the
+  card just won is never the one taken, and can fill the slot the toll empties.
+- **Nothing saves mid-fight.** The Limit Break (and the Robot's AUTO) used to call
+  `save_run`, and End Turn wrote the hero's health into `g_run`, so a quit after a Limit
+  Break resumed a fresh fight at mid-fight health. `g_run.hp` is now the fight's starting
+  health until the fight ends.
+- **Starting a run over one in progress asks first** (`abandon_window_push`); an
+  abandoned Endless run goes on the scores like a death would.
+- **Hold SELECT on a spare in the backpack to throw it away.** A full kit and pack used
+  to lock out chests and elite drops for the rest of the run. A full chest now opens the
+  backpack instead of only buzzing.
+- Smaller: the anvil label for x2 cards (`dmgx2+2`, which is what it does); real HP in the
+  Poison and fire toasts (Easy turns 3 into 1); Blind no longer leaks through the hover
+  colour or the Reroll toast; "Untouched" means no health lost, "Fully Loaded" means six
+  cards; Autoroll's six is a six even with Frozen waiting; six enemy dice shrink to fit the
+  Round 2; the trading post's offers are salted per run like the shop's; the Banker's
+  sprite is 16 colours so its locked silhouette works.
+
+Not fixed, on purpose, because they change tuned numbers or locked decisions: extra enemy
+dice add no actions (every enemy has as many cards as dice and a card fires once), and
+Endless still has no damage scaling, so a median Easy run reaches `simulate.py endless`'s
+40-floor cap. The top-10 table also mixes difficulties and classes; fixing that needs a
+`Progress` migration, since a version bump wipes it.
+
 ## Checking the tables
 
 `tools/check_data.py` validates the hand-written tables against the constants that index
@@ -605,6 +650,7 @@ with random gestures, button presses, phase changes, frame ticks and foe
 turns, asserting a set of invariants after every single event.
 
     tools/hostsim/build.sh && tools/hostsim/fuzz_touch 60000 <seed>
+    tools/hostsim/rules_test && tools/hostsim/rules_test_round   # the 1.2.1 rule checks
 
 Geometry is real (`grect_contains_point`, `grect_inset`); drawing is inert. `build.sh`
 makes two binaries: `fuzz_touch` and `fuzz_touch_round`, compiled with `PBL_ROUND`, because

@@ -282,12 +282,45 @@ void run_descend(void) {
     // earn a Limit Break. Getting tougher makes your best move rarer, and that
     // tension is deliberate.
     g_run.level++;
-    g_run.max_hp += WARRIOR_HP_PER_LVL;
-    g_run.hp = g_run.max_hp;      // a level up puts you back on your feet
-
     pick_rule();
+    if (g_run.mode == MODE_ENDLESS) {
+        // Endless changes ruleset every floor, so a rule's health cost has to be
+        // charged per floor too. It used to be charged only at run_new, which
+        // Endless never reaches with a rule in force: Sudden Death was an extra
+        // die and double gold for nothing. The full figure is worked out from
+        // the level rather than carried, so a floor at three-quarters health
+        // does not shrink every floor after it -- and it is exactly what an
+        // older save already holds, since Endless starts on the plain rules.
+        int16_t full = (int16_t)(diff_hero_hp((int16_t)class_def(g_run.klass)->base_hp) +
+                                 WARRIOR_HP_PER_LVL * (g_run.level - 1));
+        g_run.max_hp = (g_run.rule == RULE_SUDDEN) ? (int16_t)((full * 75) / 100) : full;
+    } else {
+        g_run.max_hp += WARRIOR_HP_PER_LVL;
+    }
+    g_run.hp = g_run.max_hp;      // a level up puts you back on your feet
+    // A smaller bar can leave the charge past the top of it; that is a full
+    // charge, and the button should say so rather than read 120%.
+    if (g_run.limit_charge >= (uint16_t)g_run.max_hp) {
+        g_run.limit_charge = (uint16_t)g_run.max_hp;
+        g_run.limit_ready = true;
+    }
+
     run_build_floor();
     save_run();
+}
+
+// Losing a piece of equipment after every fight is the Elimination Round's
+// whole rule, and it is why a lean loadout matters there. Losing a card after
+// every fight is the rule; being stripped bare by floor two is a death spiral.
+// How far it can strip you scales with difficulty, which is the only way this
+// rule can be made gentle on Easy — no health multiplier can give a card back.
+int8_t run_elimination_pick(void) {
+    int owned[MAX_EQUIP], n = 0;
+    for (int i = 0; i < MAX_EQUIP; i++) if (g_run.equip[i] != ITEM_NONE) owned[n++] = i;
+    static const int floor_by_diff[DIFF_COUNT] = { 4, 5, 3 };
+    uint8_t d = (g_run.difficulty < DIFF_COUNT) ? g_run.difficulty : DIFF_NORMAL;
+    if (n <= floor_by_diff[d]) return -1;
+    return (int8_t)owned[rand() % n];
 }
 
 bool run_backpack_add(uint8_t item_id) {

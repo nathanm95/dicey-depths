@@ -228,7 +228,9 @@ static void effect_tag(const Effect *e, int8_t bonus, char *out, size_t len) {
         case EFF_SELF:    snprintf(out, len, "+%s", status_short((StatusId)e->status)); return;
         default: out[0] = '\0'; return;
     }
-    int add = e->add + bonus;
+    // The anvil adds 1 to the die, so a card that doubles the die gains 2. The
+    // label used to add the 1 after the multiplier and undersold every x2 card.
+    int add = e->add + bonus * e->mult;
     if (e->mult == 0) {
         snprintf(out, len, "%s%d", verb, add < 0 ? -add : add);
     } else if (e->mult == 1 && add == 0) {
@@ -246,7 +248,7 @@ void item_effect_label_up(uint8_t id, bool upgraded, char *out, size_t len) {
     const ItemDef *d = item_def(id);
     char a[18] = "", b[18] = "";
     effect_tag(&d->eff[0], upgraded ? 1 : 0, a, sizeof(a));
-    effect_tag(&d->eff[1], 0, b, sizeof(b));
+    effect_tag(&d->eff[1], upgraded ? 1 : 0, b, sizeof(b));
     if (!b[0]) { snprintf(out, len, "%s", a); return; }
     if (d->bonus.kind == COND_ANY) { snprintf(out, len, "%s,%s", a, b); return; }
     // A conditional second effect reads as "what it needs : what you get".
@@ -272,7 +274,7 @@ static const char *s_blurb[ST_COUNT] = {
     "Your best die becomes a 1",
     "A card is offline. Drop any die on it",
     "One card does half",
-    "Dice hidden until you spend them",
+    "Dice hidden until you spend them",   // on an enemy: it plays them at random
     "3 HP a turn, straight through shields",
     "Your next card fires twice",
     "No Limit Break this turn"

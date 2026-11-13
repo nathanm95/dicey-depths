@@ -93,7 +93,9 @@ static GBitmap   *s_foe_bmp;      // NULL when this enemy has no sprite yet
 static Combatant  s_hero, s_foe;
 static uint8_t    s_foe_id;
 static bool       s_elite;
-static int16_t    s_hp_at_start;    // for the "no damage taken" achievement
+static bool       s_hero_hurt;      // for "Untouched": any health lost, even if healed back
+static uint8_t    s_foe_fumbles;    // dice a blind enemy threw at the wrong card
+Spoils            g_spoils;
 static Card       s_cards[MAX_EQUIP];
 static Card       s_foe_cards[MAX_FOE_EQUIP];
 static Die        s_dice[MAX_DICE];
@@ -241,7 +243,10 @@ static bool card_usable(const Card *c) {
     return true;
 }
 
-static bool can_place(const Card *c, const Die *die, const char **why) {
+// `see_number` is false while the hero is Blind: the hover colour must not
+// say whether a hidden die fits, or Blind hides nothing. Everything else that
+// stops a placement -- a spent card, a jam, fire -- is in plain sight anyway.
+static bool can_place_ex(const Card *c, const Die *die, const char **why, bool see_number) {
     // In the Parallel Universe a burning die is usable — it just jams the card
     // it lands in. Everywhere else it has to be put out first.
     if (die->burning && !parallel()) { if (why) *why = "That die is on fire"; return false; }
@@ -251,19 +256,25 @@ static bool can_place(const Card *c, const Die *die, const char **why) {
     if (!card_usable(c)) { if (why) *why = "All used up"; return false; }
     int slot = card_next_open_slot(c);
     if (slot < 0) { if (why) *why = "No room"; return false; }
-    if (!cond_accepts(item_cond_up(c->id, (uint8_t)slot, c->upgraded), die->pips)) {
+    if (see_number && !cond_accepts(item_cond_up(c->id, (uint8_t)slot, c->upgraded), die->pips)) {
         if (why) *why = "Wrong number for that slot";
         return false;
     }
     return true;
 }
 
+static bool can_place(const Card *c, const Die *die, const char **why) {
+    return can_place_ex(c, die, why, true);
+}
+
 // --- damage ----------------------------------------------------------------
 // Shields soak; poison ignores them. Any HP the hero actually loses charges
 // the Limit Break — including the 2 HP paid to put out a burning die, which is
 // exactly how you charge it on purpose.
-static void deal_damage(Combatant *t, int16_t amount, bool pierce, bool is_hero) {
-    if (amount <= 0) return;
+// Returns the health actually lost, so a toast can say the real number: Easy
+// turns Poison's 3 into 1, and the toast used to say 3 regardless.
+static int16_t deal_damage(Combatant *t, int16_t amount, bool pierce, bool is_hero) {
+    if (amount <= 0) return 0;
     if (is_hero) amount = diff_incoming(amount);   // Easy softens what lands on you
     if (!pierce && t->shield > 0) {
         int16_t soak = (t->shield >= amount) ? amount : t->shield;
@@ -275,12 +286,13 @@ static void deal_damage(Combatant *t, int16_t amount, bool pierce, bool is_hero)
                             : GPoint(s_L.portrait.origin.x + s_L.portrait.size.w / 2,
                                      s_L.portrait.origin.y + s_L.portrait.size.h / 2),
                     0, COL_HERO);
-        return;
+        return 0;
     }
     t->hp -= amount;
     if (t->hp < 0) t->hp = 0;
 
     if (is_hero) {
+        s_hero_hurt = true;
         tw_start(&s_hero_hit, 420);
         float_spawn(GPoint(s_L.hero_strip.origin.x + 30, s_L.hero_strip.origin.y), amount, COL_BAD);
         g_run.limit_charge += amount;
@@ -295,6 +307,7 @@ static void deal_damage(Combatant *t, int16_t amount, bool pierce, bool is_hero)
         float_spawn(GPoint(s_L.portrait.origin.x + s_L.portrait.size.w / 2,
                            s_L.portrait.origin.y + s_L.portrait.size.h / 2), amount, COL_BAD);
     }
+    return amount;
 }
 
 static void heal_up(Combatant *t, int16_t amount, bool is_hero) {
@@ -324,7 +337,6 @@ static void apply_effects(const ItemDef *d, int16_t value, int16_t raw,
     Combatant *other = by_hero ? &s_foe  : &s_hero;
 
     if (upgraded) value += 1;              // what the anvil buys you
-    if (weak)     { value /= 2; if (value < 1) value = 1; }
 
     for (int e = 0; e < 2; e++) {
         const Effect *ef = &d->eff[e];
@@ -333,6 +345,13 @@ static void apply_effects(const ItemDef *d, int16_t value, int16_t raw,
         // every ordinary two-effect card.
         if (e == 1 && !cond_accepts(d->bonus, (uint8_t)(raw < 0 ? 0 : raw))) continue;
         int16_t v = (int16_t)(value * ef->mult + ef->add);
+        // Weaken: "one card does half". It used to halve the die instead, which
+        // the flat cards -- Stiletto, Pin, Snake Eyes, a six's bonus -- ignore
+        // entirely. Self-harm is not halved: Weaken is not meant to help.
+        if (weak && v > 0 && ef->kind != EFF_INFLICT && ef->kind != EFF_SELF) {
+            v = (int16_t)(v / 2);
+            if (v < 1) v = 1;
+        }
         switch (ef->kind) {
             case EFF_DAMAGE: deal_damage(other, v, false, !by_hero); break;
             case EFF_SHIELD:
@@ -374,9 +393,13 @@ static void fire_card(Card *c, bool by_hero) {
             tw_stop(&pool[di].fly);
             if (c->uses_left > 0) c->uses_left--;
             tw_start(&c->fx, 420);
+            // While Blind the die goes back into the tray still hidden, so the
+            // toast must not read it out.
+            bool hidden = by_hero && s_hero.status[ST_BLIND] > 0;
             if (item_is_reroll(c->id)) {
                 if (c->uses_left == 0) c->spent = true;
-                if (by_hero) toast("Reroll: %d becomes %d  (%d left)", before, pool[di].pips, c->uses_left);
+                if (hidden) toast("Reroll: rolled again  (%d left)", c->uses_left);
+                else if (by_hero) toast("Reroll: %d becomes %d  (%d left)", before, pool[di].pips, c->uses_left);
             } else {
                 // Any other card that rerolls (Gambit) is an ordinary card that
                 // happens to hand the die back: it still fires once a turn, and
@@ -385,7 +408,8 @@ static void fire_card(Card *c, bool by_hero) {
                 apply_effects(d, before, before, by_hero, c->weakened, up);
                 c->weakened = false;
                 c->spent = true;
-                if (by_hero) toast("%s: %d becomes %d", d->name, before, pool[di].pips);
+                if (hidden) toast("%s: rolled again", d->name);
+                else if (by_hero) toast("%s: %d becomes %d", d->name, before, pool[di].pips);
                 check_end();
             }
         }
@@ -553,8 +577,8 @@ static void roll_side(bool hero) {
             cards[pick].jam = 2;                // infects a card instead of you
             if (hero) toast("Poison infects a card");
         } else {
-            deal_damage(cb, 3, true, hero);
-            if (hero) toast("Poison: 3 HP through your shield");
+            int16_t lost = deal_damage(cb, 3, true, hero);
+            if (hero) toast("Poison: %d HP through your shield", lost);
         }
         cb->status[ST_POISON]--;
     }
@@ -619,11 +643,49 @@ static int16_t score_card(const Card *c, uint8_t pips) {
     return s;
 }
 
+// A blind enemy cannot see its dice, so it throws each one at a card it could
+// use without knowing whether the number fits. A miss wastes the die AND the
+// card it reached for. Blind used to be a status nothing read on an enemy, so
+// Pocket Sand's second effect did nothing at all.
+static void plan_blind_turn(bool *card_taken) {
+    uint8_t order[MAX_FOE_DICE];
+    for (uint8_t i = 0; i < s_foe_dice_n; i++) order[i] = i;
+    for (int i = s_foe_dice_n - 1; i > 0; i--) {
+        int j = rand() % (i + 1);
+        uint8_t t = order[i]; order[i] = order[j]; order[j] = t;
+    }
+    for (uint8_t k = 0; k < s_foe_dice_n; k++) {
+        uint8_t di = order[k];
+        if (s_foe_dice[di].burning) continue;
+        int8_t cands[MAX_FOE_EQUIP];
+        uint8_t n = 0;
+        for (int ci = 0; ci < s_foe_card_n; ci++) {
+            Card *c = &s_foe_cards[ci];
+            if (card_taken[ci] || !card_usable(c) || c->disabled) continue;
+            if (item_def(c->id)->slots != 1) continue;
+            cands[n++] = (int8_t)ci;
+        }
+        if (!n) break;
+        int8_t ci = cands[rand() % n];
+        card_taken[ci] = true;
+        if (!cond_accepts(item_def(s_foe_cards[ci].id)->cond[0], s_foe_dice[di].pips)) {
+            s_foe_fumbles++;
+            continue;
+        }
+        s_plan_die[s_plan_n] = (int8_t)di;
+        s_plan_card[s_plan_n] = ci;
+        s_plan_n++;
+    }
+}
+
 static void plan_foe_turn(void) {
     s_plan_n = 0;
     s_plan_i = 0;
+    s_foe_fumbles = 0;
     bool die_taken[MAX_FOE_DICE] = {false};
     bool card_taken[MAX_FOE_EQUIP] = {false};
+
+    if (s_foe.status[ST_BLIND] > 0) { plan_blind_turn(card_taken); return; }
 
     for (int pass = 0; pass < s_foe_dice_n; pass++) {
         int best_d = -1, best_c = -1;
@@ -658,7 +720,12 @@ static void begin_foe_turn(void) {
     check_end();            // Poison at its roll can finish it before it acts
     if (s_phase == PHASE_OVER) return;
     plan_foe_turn();
-    toast("%s rolls...", enemy_def(s_foe_id)->name);
+    if (s_foe.status[ST_BLIND] > 0) {
+        toast("%s is blind and plays at random", enemy_def(s_foe_id)->name);
+        if (s_foe_fumbles) toast("%d of its dice missed", s_foe_fumbles);
+    } else {
+        toast("%s rolls...", enemy_def(s_foe_id)->name);
+    }
     s_foe_timer = app_timer_register(FOE_STEP_MS, foe_step, NULL);
     redraw();
 }
@@ -715,10 +782,47 @@ static void check_end(void) {
         drop_drag();
         ach_unlock(ACH_FIRST_WIN);
         if (s_elite) ach_unlock(ACH_ELITE);
-        if (s_hero.hp >= s_hp_at_start) ach_unlock(ACH_UNTOUCHED);
+        // "Without losing any health": healing back up to where you started
+        // used to count.
+        if (!s_hero_hurt) ach_unlock(ACH_UNTOUCHED);
         toast_now("%s is out! +%d gold", d->name, gold);
+
+        // What the win leaves behind is decided here, so the closing toast can
+        // say it: the elite's rare card used to land in the kit with only a
+        // buzz (or vanish, with a full pack), and the Elimination Round took a
+        // card without a word. The floor applies both in its one save.
+        // The toll comes first, so the rare card just won cannot be the card it
+        // takes, and can fill the slot it empties.
+        int extra = 0;
+        g_spoils.drop = ITEM_NONE;
+        g_spoils.drop_kept = false;
+        g_spoils.toll = -1;
+        bool run_ends = d->boss && g_run.mode == MODE_CAMPAIGN;
+        if (g_run.rule == RULE_ELIMINATION && !run_ends) {
+            g_spoils.toll = run_elimination_pick();
+        }
+        if (s_elite) {
+            g_spoils.drop = item_roll_for_floor((uint8_t)(g_run.floor + 2));
+            bool room = (g_spoils.toll >= 0) || (run_equip_free_slot() >= 0);
+            for (int i = 0; i < MAX_BACKPACK && !room; i++) if (g_run.pack[i] == ITEM_NONE) room = true;
+            g_spoils.drop_kept = room;
+            const ItemDef *dd = item_def(g_spoils.drop);
+            if (room) {
+                char eff[24], c0[10];
+                item_effect_label(g_spoils.drop, eff, sizeof(eff));
+                cond_label(dd->cond[0], c0, sizeof(c0));
+                toast("Rare drop: %s (%s %s)", dd->name, c0, eff);
+            } else {
+                toast("Pack full - %s left behind", dd->name);
+            }
+            extra++;
+        }
+        if (g_spoils.toll >= 0) {
+            toast("Elimination takes your %s", item_def(g_run.equip[g_spoils.toll])->name);
+            extra++;
+        }
         if (s_foe_timer) { app_timer_cancel(s_foe_timer); s_foe_timer = NULL; }
-        app_timer_register(2100, finish, NULL);
+        app_timer_register((uint32_t)(2100 + 1400 * extra), finish, NULL);
     }
 }
 
@@ -799,8 +903,8 @@ static void return_die_from(int8_t ci) {
 static void extinguish(int8_t di) {
     if (di < 0 || di >= s_dice_n || !s_dice[di].burning) return;
     s_dice[di].burning = false;
-    deal_damage(&s_hero, BURN_EXTINGUISH, true, true);
-    toast("Fire out - %d HP", BURN_EXTINGUISH);
+    int16_t lost = deal_damage(&s_hero, BURN_EXTINGUISH, true, true);
+    toast("Fire out - %d HP", lost);
     check_end();
 }
 
@@ -812,24 +916,30 @@ static void do_limit_break(void) {
     s_hero.status[ST_FURY]++;
     toast("FURY! Your next card fires twice");
     vibes_double_pulse();
-    save_run();
+    // Not saved. This used to save the run mid-fight, which wrote whatever
+    // health the last End Turn had left in g_run -- so a quit after it put
+    // the hero back into a fresh fight at that health rather than the health
+    // the fight started with. Nothing is saved until the fight is over, so a
+    // quit replays the whole fight, Limit Break included.
 }
 
 // Turn the number the Robot has built into a die in the tray, carrying any
-// status that was waiting for it.
-static void cpu_bank(void) {
+// status that was waiting for it. `guaranteed` is the Limit Break's six: it
+// is risk-free, so a waiting Frozen or Burn holds for the next bank instead
+// of turning the promised six into a 1.
+static void cpu_bank_ex(bool guaranteed) {
     if (!is_robot()) return;
     if (s_cpu == 0) { toast("Push the CPU first"); return; }
     if (s_dice_n >= MAX_DICE) { toast("No room in the tray"); return; }
 
     uint8_t v = s_cpu;
-    if (s_pending_frozen > 0) { v = 1; s_pending_frozen--; toast("Frozen: banked as a 1"); }
+    if (!guaranteed && s_pending_frozen > 0) { v = 1; s_pending_frozen--; toast("Frozen: banked as a 1"); }
 
     Die *d = &s_dice[s_dice_n];
     memset(d, 0, sizeof(*d));
     d->pips = v;
     d->used = false;
-    if (s_pending_burn > 0) { d->burning = true; s_pending_burn--; }
+    if (!guaranteed && s_pending_burn > 0) { d->burning = true; s_pending_burn--; }
     tw_start(&d->settle, 420);
     s_dice_n++;
 
@@ -838,6 +948,8 @@ static void cpu_bank(void) {
     if (s_builds_left > 0) s_builds_left--;
     redraw();
 }
+
+static void cpu_bank(void) { cpu_bank_ex(false); }
 
 // PUSH. `guaranteed` is the Robot's Limit Break: a six, banked, no risk.
 static void cpu_push(bool guaranteed) {
@@ -850,7 +962,7 @@ static void cpu_push(bool guaranteed) {
         s_cpu_live = true;
         tw_start(&s_cpu_fx, 400);
         toast("AUTOROLL - a guaranteed six");
-        cpu_bank();
+        cpu_bank_ex(true);
         return;
     }
 
@@ -872,7 +984,8 @@ static void cpu_push(bool guaranteed) {
 
 static void end_turn(void) {
     if (s_phase != PHASE_PLAYER) return;
-    g_run.hp = s_hero.hp;
+    // g_run.hp is left alone until the fight is over: it is the health a quit
+    // resumes the fight at, so it must stay the health the fight began with.
     expire_turn_statuses(&s_hero);
     begin_foe_turn();
 }
@@ -889,8 +1002,7 @@ static void do_action(int8_t a) {
                     if (s_builds_left == 0 || s_dice_n >= MAX_DICE) { cpu_push(true); break; }
                     g_run.limit_ready = false;
                     g_run.limit_charge = 0;
-                    save_run();
-                    cpu_push(true);
+                    cpu_push(true);     // not saved mid-fight: see do_limit_break
                 } else {
                     cpu_push(false);
                 }
@@ -990,6 +1102,15 @@ static void compute_layout(Layout *L) {
     int16_t ds = ui_die_size();
     int16_t gap = 5;
     int16_t total = (int16_t)(slots * ds + (slots - 1) * gap);
+    // Six enemy dice at full size are 217px, and the Round 2's circle is about
+    // 180px across where the tray sits, so the outer two hung off the glass.
+    // Shrink the row to fit rather than lose them. The band is padded 4px a side.
+    int16_t room = (int16_t)(L->dice_band.size.w + 8);
+    if (total > room) {
+        gap = 3;
+        ds = (int16_t)((room - (slots - 1) * gap) / slots);
+        total = (int16_t)(slots * ds + (slots - 1) * gap);
+    }
     int16_t x0 = (int16_t)(L->bounds.size.w / 2 - total / 2);
     for (int i = 0; i < MAX_FOE_DICE; i++) {
         L->die[i] = GRect((int16_t)(x0 + i * (ds + gap)), (int16_t)(L->dice_band.origin.y + 2), ds, ds);
@@ -1131,7 +1252,8 @@ static void draw_card(GContext *ctx, const Layout *L, int i) {
     bool hovering = s_dragging ? (i == s_hover_card) : (s_mode == SEL_PICK && s_cursor == i);
     if (held >= 0 && hovering) {
         const char *why = NULL;
-        fill = can_place(c, &s_dice[held], &why) ? COL_OK : COL_BAD;
+        bool see = s_hero.status[ST_BLIND] == 0;
+        fill = can_place_ex(c, &s_dice[held], &why, see) ? COL_OK : COL_BAD;
     }
     ui_draw_panel(ctx, r, fill, COL_INK, selected || hovering);
 
@@ -1829,11 +1951,19 @@ void combat_window_push(uint8_t enemy_id, bool elite) {
     // a card never moves between fights.
     s_card_n = run_equip_slots();
     s_grid_row = 0;
+    // An Endless floor under Curse of Greed has no starting kit to upgrade --
+    // the campaign version hands you one at run_new -- so for the floor every
+    // card that can be improved fights as if it had been. That is the "Greed"
+    // half of the bargain; the curse every turn is the other.
+    bool greed = (g_run.mode == MODE_ENDLESS && g_run.rule == RULE_GREED);
+    uint8_t carried = 0;
     for (int i = 0; i < MAX_EQUIP; i++) {
         Card *c = &s_cards[i];
         memset(c, 0, sizeof(*c));
         c->id = g_run.equip[i];
-        c->upgraded = run_is_upgraded(true, i);
+        c->upgraded = run_is_upgraded(true, i) ||
+                      (greed && c->id != ITEM_NONE && item_upgrade_useful(c->id));
+        if (i < s_card_n && c->id != ITEM_NONE) carried++;
         c->uses_left = (c->id == ITEM_NONE) ? 0 : item_def(c->id)->uses;
         for (int s = 0; s < MAX_SLOTS; s++) c->filled[s] = -1;
     }
@@ -1852,9 +1982,14 @@ void combat_window_push(uint8_t enemy_id, bool elite) {
     uint32_t rid = portrait_resource_for(ed->shape);
     if (rid) s_foe_bmp = gbitmap_create_with_resource(rid);
 
-    s_hp_at_start = g_run.hp;
+    s_hero_hurt = false;
+    s_foe_fumbles = 0;
+    g_spoils.drop = ITEM_NONE;
+    g_spoils.drop_kept = false;
+    g_spoils.toll = -1;
 
-    if (run_equip_slots() >= 6) ach_unlock(ACH_FULL_GRID);
+    // "Carry six cards at once": six cards, not six empty slots.
+    if (carried >= 6) ach_unlock(ACH_FULL_GRID);
     s_action_n = (uint8_t)(is_robot() ? 3 : 2);
     s_dice_n = is_robot() ? 0 : run_hero_dice();
     s_builds_left = is_robot() ? run_hero_dice() : 0;
@@ -1891,8 +2026,18 @@ void combat_window_push(uint8_t enemy_id, bool elite) {
         default: break;
     }
 
+    // Say what is in force before the roll's own news, so it is never the
+    // announcement that a full toast queue drops. Endless draws a ruleset per
+    // floor from floor 4, and used to apply it without a word anywhere.
+    bool told = false;
+    if (g_run.mode == MODE_ENDLESS && g_run.rule != RULE_PLAIN) {
+        toast("%s: %s", rule_name((RuleId)g_run.rule), rule_floor_blurb((RuleId)g_run.rule));
+        told = true;
+    }
+    if (g_run.curse != CURSE_NONE) {
+        toast("%s: %s", curse_name(g_run.curse), curse_blurb(g_run.curse));
+        told = true;
+    }
+    if (!told) toast("%s blocks your way", ed->name);
     begin_player_turn();
-    if (g_run.curse != CURSE_NONE) toast("%s: %s", curse_name(g_run.curse),
-                                         curse_blurb(g_run.curse));
-    else toast("%s blocks your way", ed->name);
 }

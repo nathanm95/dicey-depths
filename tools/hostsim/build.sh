@@ -22,3 +22,16 @@ clang -std=c11 -g -O1 \
   $SRC/items.c $SRC/run.c $SRC/enemies.c $SRC/classes.c $SRC/rules.c \
   $SRC/anim.c $SRC/ui.c $SRC/portraits.c $SRC/achieve.c $SRC/score.c \
   -o fuzz_touch_round 2>&1 | head -40
+# The rules regression tests (tools/hostsim/rules_test.c), rectangle and round.
+for v in "" "_round"; do
+  EXTRA=""; RES=emery
+  [ -n "$v" ] && { EXTRA="-DPBL_ROUND -DPBL_DISPLAY_WIDTH=260 -DPBL_DISPLAY_HEIGHT=260"; RES=gabbro; }
+  clang -std=c11 -g -O1 \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers \
+    ${=EXTRA} -I. -I$SRC -include ../../build/$RES/src/resource_ids.auto.h \
+    rules_test.c stubs.c \
+    $SRC/items.c $SRC/run.c $SRC/enemies.c $SRC/classes.c $SRC/rules.c \
+    $SRC/anim.c $SRC/ui.c $SRC/portraits.c $SRC/achieve.c $SRC/score.c \
+    -o rules_test$v 2>&1 | head -40
+done

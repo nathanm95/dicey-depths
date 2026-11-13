@@ -184,6 +184,10 @@ bool bonus_rounds_unlocked(void);
 
 const char *rule_name(RuleId r);
 const char *rule_blurb(RuleId r);
+// Endless draws a ruleset per floor, so it has to say which, and in a few
+// words: a short name for the floor header, a line for the fight to announce.
+const char *rule_tag(RuleId r);
+const char *rule_floor_blurb(RuleId r);
 
 // --- Run state -------------------------------------------------------------
 typedef enum {
@@ -274,6 +278,17 @@ bool    run_is_upgraded(bool equipped, int index);
 void    run_set_upgraded(bool equipped, int index);
 int16_t run_enemy_hp(uint8_t enemy_id);   // endless scaling folded in
 uint8_t run_enemy_dice(uint8_t enemy_id);
+// The Elimination Round's toll: which equipped slot it takes, or -1.
+int8_t  run_elimination_pick(void);
+// What a won fight leaves behind. Decided by combat at the moment of the win,
+// so the closing toast can name it, and applied by the floor in the same save
+// as the rest of the win.
+typedef struct {
+    uint8_t drop;       // an elite's rare card, or ITEM_NONE
+    bool    drop_kept;  // false: the pack was full and it was left behind
+    int8_t  toll;       // equipped slot the Elimination Round takes, or -1
+} Spoils;
+extern Spoils g_spoils;
 // An elite is the same creature, tougher, and worth more.
 #define ELITE_HP_PCT   130
 #define ELITE_GOLD_MUL   2
